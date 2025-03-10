@@ -1,4 +1,4 @@
-import os
+import os, gc
 from typing import Optional, Tuple, Literal
 
 import torch
@@ -716,4 +716,7 @@ def main(
 
 
 if __name__ == '__main__':
+    gc.collect()
+    torch.cuda.empty_cache()
+
     tyro.cli(main)

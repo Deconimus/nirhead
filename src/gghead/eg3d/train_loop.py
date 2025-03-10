@@ -188,7 +188,7 @@ def training_loop(
     # ----------------------------------------------------------
     # Logging
     # ----------------------------------------------------------
-    if rank == 0:
+    if False: #rank == 0:
         ensure_directory_exists(model_manager.get_wandb_folder())
         wandb_logger = WandbLogger(
             project=experiment_config.train_setup.project_name,
