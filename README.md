@@ -1,12 +1,4 @@
-# GGHead: Fast and Generalizable 3D Gaussian Heads
-
-[Paper](https://tobias-kirschstein.github.io/gghead/static/GGHead_paper.pdf) | [Video](https://youtu.be/1iyC74neQXc) | [Project Page](https://tobias-kirschstein.github.io/gghead/)
-
-![](static/teaser.gif)
-
-[Tobias Kirschstein](tobias-kirschstein.github.io), [Simon Giebenhain](https://simongiebenhain.github.io/), [Jiapeng Tang](https://tangjiapeng.github.io/), [Markos Georgopoulos](https://scholar.google.com/citations?user=id7vw0UAAAAJ&hl=en),
-and [Matthias Nießner](https://www.niessnerlab.org/)  
-**Siggraph Asia 2024**
+# NIRHead: Synthetic NIR Heads
 
 # 1. Setup
 
@@ -16,7 +8,7 @@ and [Matthias Nießner](https://www.niessnerlab.org/)
     ```bash
     conda env create -f environment.yml
     ```
-2. Ensure that `nvcc.exe` is taken from the conda environment and includes can be found:
+2. Ensure that `nvcc` is taken from the conda environment and includes can be found:
     1. *[Linux]*
         ```bash
         conda activate gghead
@@ -24,14 +16,7 @@ and [Matthias Nießner](https://www.niessnerlab.org/)
         conda activate base
         conda activate gghead
         ```
-    2. *[Windows]*
-        ```bash
-        conda activate gghead
-        conda env config vars set CUDA_HOME=$Env:CONDA_PREFIX
-        conda env config vars set NVCC_PREPEND_FLAGS="-I$Env:CONDA_PREFIX\Library\include"
-        conda activate base
-        conda activate gghead
-        ```
+        
 3. Check whether the correct `nvcc` can be found on the path via:
     ```bash
     nvcc --version
