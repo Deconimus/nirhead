@@ -11,10 +11,10 @@
 2. Ensure that `nvcc` is taken from the conda environment and includes can be found:
     1. *[Linux]*
         ```bash
-        conda activate gghead
+        conda activate nirhead
         conda env config vars set CUDA_HOME=$CONDA_PREFIX
         conda activate base
-        conda activate gghead
+        conda activate nirhead
         ```
         
 3. Check whether the correct `nvcc` can be found on the path via:
