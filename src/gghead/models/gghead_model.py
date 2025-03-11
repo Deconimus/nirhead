@@ -5,6 +5,7 @@ from typing import Literal, List, Union, Dict, Optional, Tuple
 
 import numpy as np
 import torch
+import torchvision.transforms.functional
 import trimesh
 from dreifus.camera import PoseType, CameraCoordinateConvention
 from dreifus.matrix import Pose, Intrinsics
@@ -25,7 +26,7 @@ from gaussian_splatting.scene.cameras import pose_to_rendercam
 from gaussian_splatting.utils.sh_utils import C0, eval_sh
 from gghead.config.gaussian_attribute import GaussianAttribute, GaussianAttributeConfig
 from gghead.env import REPO_ROOT_DIR
-from gghead.models.stylegan2 import GGHGenerator as GGHStyleGAN2Backbone, GGHSynthesisNetwork, GGHSynthesisBlock
+from gghead.models.stylegan2 import GGHGenerator as GGHStyleGAN2Backbone, GGHSynthesisBlock
 from gghead.util.activation import mip_tanh, mip_sigmoid, mip_tanh2
 from gghead.util.logging import LoggerBundle
 from gghead.util.mesh import gaussians_to_mesh
@@ -134,6 +135,7 @@ class GGHeadConfig(Config):
     pretrained_resolution: Optional[int] = implicit()
     # Gaussian Attribute decoding
     use_position_activation: bool = True
+    force_grayscale: bool = True
     use_color_activation: bool = True
     use_scale_activation: bool = False
     center_scale_activation: bool = False  # If true, the max_scale option will be properly applied inside the softplus
@@ -599,6 +601,16 @@ class GGHeadModel(nn.Module):
             planes = self._last_planes
         else:
             planes = self.backbone.synthesis(ws, update_emas=update_emas, **synthesis_kwargs)
+
+            if self._config.force_grayscale:
+                #print(self._config.gaussian_attribute_config.sh_degree)
+                c_start = self._uv_attribute_start_channel[GaussianAttribute.COLOR]
+                c_channels = self._config.gaussian_attribute_config.n_color_channels
+                for i in range((self._config.gaussian_attribute_config.sh_degree + 1) ** 2):
+                    color_map = planes[:, c_start + i * c_channels : c_start + (i+1) * c_channels, :, :]
+                    color_map = torchvision.transforms.functional.rgb_to_grayscale(color_map, num_output_channels=3)
+                    planes[:, c_start + i * c_channels : c_start + (i+1) * c_channels, :, :] = color_map
+
         if cache_backbone:
             self._last_planes = planes
 
@@ -772,6 +784,7 @@ class GGHeadModel(nn.Module):
         planes = self.predict_planes(ws, update_emas=update_emas, cache_backbone=cache_backbone,
                                      use_cached_backbone=use_cached_backbone,
                                      alpha_plane_resolution=alpha_plane_resolution, **synthesis_kwargs)
+
         if self._config.use_background_cnn:
             background_rgb = planes[:, -self._config.n_background_channels:]
 
@@ -997,6 +1010,7 @@ class GGHeadModel(nn.Module):
         return mip_sigmoid(value, overshoot=self._config.opacity_overshoot, clamp=self._config.clamp_opacity)
 
     def _apply_color_activation(self, value: torch.Tensor) -> torch.Tensor:
+
         if self._config.use_color_activation:
             color_value = value[..., :3]  # First 3 channels are always color values
             color_value = mip_tanh(color_value, overshoot=self._config.color_overshoot)

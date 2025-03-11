@@ -10,3 +10,6 @@ _pycache__
 *.egg-info
 /docs/build/
 dist
+
+models/
+renderings/
