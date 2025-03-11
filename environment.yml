@@ -26,6 +26,8 @@ dependencies:
   - cuda-toolkit
   - libcusparse-dev
   - glm  # For gsplat
+  - gxx_linux-64
+  - gcc_linux-64
 
   - pip:
       - tyro
