@@ -158,6 +158,7 @@ def main(
         n_feature_channels: int = 32,
         n_downsampling_layers: int = 1,
         freeze_generator: bool = False,
+        freeze_d: int = 0,
         smooth_D_intro: bool = True,
         smooth_res_intro: bool = False,
         smooth_G_intro: bool = True,
@@ -572,7 +573,8 @@ def main(
         resume_run=resume_run,
         resume_checkpoint=resume_checkpoint,
         reset_cur_nimg=reset_cur_nimg,
-        total_kimg=kimg
+        total_kimg=kimg,
+        freeze_d=freeze_d,
     )
 
     # Hyperparameters & settings.

@@ -46,6 +46,8 @@ class GGHeadTrainSetup(Config):
     total_kimg: Optional[int] = 25000
     wandb_run_id: str = implicit()
 
+    freeze_d: int = 0
+
 
 @dataclass
 class GGHeadGANOptimizerConfig(Config):

@@ -134,8 +134,8 @@ def training_loop(
         random_seed             = 0,        # Global random seed.
         num_gpus                = 1,        # Number of GPUs participating in the training.
         rank                    = 0,        # Rank of the current process in [0, num_gpus[.
-        batch_size              = 4,        # Total batch size for one training iteration. Can be larger than batch_gpu * num_gpus.
-        batch_gpu               = 4,        # Number of samples processed at a time by one GPU.
+        batch_size              = 2,        # Total batch size for one training iteration. Can be larger than batch_gpu * num_gpus.
+        batch_gpu               = 2,        # Number of samples processed at a time by one GPU.
         ema_kimg                = 10,       # Half-life of the exponential moving average (EMA) of generator weights.
         ema_rampup              = 0.05,     # EMA ramp-up coefficient. None = no rampup.
         G_reg_interval          = None,     # How often to perform regularization for G? None = disable lazy regularization.
@@ -146,7 +146,7 @@ def training_loop(
         ada_kimg                = 500,      # ADA adjustment speed, measured in how many kimg it takes for p to increase/decrease by one unit.
         total_kimg              = 25000,    # Total length of the training, measured in thousands of real images.
         kimg_per_tick           = 4,        # Progress snapshot interval.
-        image_snapshot_ticks    = 50,       # How often to save image snapshots? None = disable.
+        image_snapshot_ticks    = 16,       # How often to save image snapshots? None = disable.
         network_snapshot_ticks  = 50,       # How often to save network snapshots? None = disable.
         resume_pkl              = None,     # Network pickle to resume training from.
         resume_kimg             = 0,        # First kimg to report when resuming training.
@@ -347,7 +347,11 @@ def training_loop(
         copy_params(G_loaded, G, require_all=False)
         copy_params(G_ema_loaded, G_ema, require_all=False)
         copy_params(D_loaded, D, require_all=False)
+
+        D.freeze_lower_layers(experiment_config.train_setup.freeze_d)
+
         resume_kimg = checkpoint
+
         if not experiment_config.train_setup.reset_cur_nimg:
             logger_bundle.set_step(resume_kimg * 1000)
 

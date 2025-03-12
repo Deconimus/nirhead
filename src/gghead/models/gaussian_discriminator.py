@@ -155,3 +155,22 @@ class GaussianDiscriminator(nn.Module):
 
     def extra_repr(self):
         return f'c_dim={self.c_dim:d}, img_resolution={self.img_resolution:d}, img_channels={self.img_channels:d}'
+
+
+    def freeze_lower_layers(self, num_layers):
+        if self.use_dual_discrimination or num_layers <= 0:
+            return
+
+        n = num_layers
+        for res in self.block_resolutions:
+            print(res)
+            block = getattr(self, f'b{res}')
+            layers = [block.conv0, block.conv1]
+            if block.architecture == "resnet":
+                layers = [block.skip] + layers
+            for layer in layers:
+                if n > 0:
+                    layer.requires_grad = False
+                    n = n-1
+            if n <= 0:
+                break
