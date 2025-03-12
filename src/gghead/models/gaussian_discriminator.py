@@ -163,12 +163,8 @@ class GaussianDiscriminator(nn.Module):
 
         n = num_layers
         for res in self.block_resolutions:
-            print(res)
             block = getattr(self, f'b{res}')
-            layers = [block.conv0, block.conv1]
-            if block.architecture == "resnet":
-                layers = [block.skip] + layers
-            for layer in layers:
+            for layer in block.children():
                 if n > 0:
                     layer.requires_grad = False
                     n = n-1
