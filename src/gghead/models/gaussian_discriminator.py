@@ -17,6 +17,7 @@ class DiscriminatorBlockConfig(Config):
     activation: Literal['relu', 'lrelu'] = 'lrelu'  # Activation function: 'relu', 'lrelu', etc.
     resample_filter: List[int] = field(default_factory=lambda: [1, 3, 3, 1])  # Low-pass filter to apply when resampling activations.
     fp16_channels_last: bool = False  # Use channels-last memory format with FP16?
+    freeze_layers: int = 0  # Freeze-D: Number of layers to freeze.
 
 
 @dataclass
@@ -114,6 +115,7 @@ class GaussianDiscriminator(nn.Module):
             block = DiscriminatorBlock(in_channels, tmp_channels, out_channels, resolution=res,
                                        first_layer_idx=cur_layer_idx, use_fp16=use_fp16, architecture=block_architecture,
                                        **asdict(config.block_config), **common_kwargs)
+            print(config.block_config.freeze_layers)
             if is_new_layer:
                 block.conv1.weight.data.zero_()
             setattr(self, f'b{res}', block)
@@ -178,12 +180,12 @@ class GaussianDiscriminator(nn.Module):
     def check_freeze_lower_layers(self, num_layers):
         n = num_layers
         for res in self.block_resolutions:
+            print(res)
             block = getattr(self, f'b{res}')
             for layer in block.children():
                 if n > 0:
-                    print(layer.weight.requires_grad)
-                    if not layer.bias is None:
-                        print(layer.bias.requires_grad)
+                    for param in layer.parameters():
+                        print(param.requires_grad)
                     n = n - 1
             if n <= 0:
                 break

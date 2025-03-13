@@ -337,6 +337,10 @@ def main(
             elif superresolution_version == 2:
                 model_config.generator_config.super_resolution_config.n_downsampling_layers = n_downsampling_layers
 
+        if freeze_d_layers is not None:
+            print("FUYK")
+            model_config.discriminator_config.block_config.freeze_layers = freeze_d_layers
+
         dataset_config.path = data
         optimizer_config.loss_config.aug = aug
         optimizer_config.loss_config.ada_target = ada_target
@@ -349,6 +353,7 @@ def main(
 
         c.ada_kimg = 100  # Make ADA react faster at the beginning.
         c.ema_rampup = None  # Disable EMA rampup.
+
     else:
 
         # ----------------------------------------------------------
@@ -477,9 +482,10 @@ def main(
             use_dual_discrimination=use_dual_discrimination,
             mapping_network_config=MappingNetworkConfig(),
             block_config=DiscriminatorBlockConfig(
+                freeze_layers = freeze_d_layers,
             ),
             epilogue_config=DiscriminatorEpilogueConfig(
-                mbstd_group_size=opts.mbstd_group
+                mbstd_group_size = opts.mbstd_group
             )
         )
         # Communicate dataset -> model config

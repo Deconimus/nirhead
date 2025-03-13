@@ -361,10 +361,10 @@ def training_loop(
             copy_params_and_buffers(resume_data[name], module, require_all=False)
 
     # Freeze lower generator layers
-    G.backbone.freeze_lower_layers(experiment_config.train_setup.freeze_g_mapping_layers, experiment_config.train_setup.freeze_g_synthesis_layers, console_out=True)
+    #G.backbone.freeze_lower_layers(experiment_config.train_setup.freeze_g_mapping_layers, experiment_config.train_setup.freeze_g_synthesis_layers, console_out=True)
 
     # FreezeD
-    D.freeze_lower_layers(experiment_config.train_setup.freeze_d, console_out=True)
+    #D.freeze_lower_layers(experiment_config.train_setup.freeze_d, console_out=True)
 
     # ----------------------------------------------------------
     # Print network summary tables
@@ -549,20 +549,20 @@ def training_loop(
             if phase.start_event is not None:
                 phase.start_event.record(torch.cuda.current_stream(device))
 
-
             # Accumulate gradients.
             phase.opt.zero_grad(set_to_none=True)
-            phase.module.requires_grad_(True) # wtf... stupid bs
+            phase.module.requires_grad_(True) # wtf?
             if experiment_config.optimizer_config.freeze_generator and phase.name in ['Gmain', 'Gboth']:
                 for k, p in phase.module.named_parameters():
                     if "super_resolution" not in k:
                         p.requires_grad_(False)
 
-            if phase.name in ["Gmain", "Gboth"]:
-                phase.module.backbone.freeze_lower_layers(experiment_config.train_setup.freeze_g_mapping_layers, experiment_config.train_setup.freeze_g_synthesis_layers)
+            #if phase.name in ["Gmain", "Gboth"]:
+            #    phase.module.backbone.freeze_lower_layers(experiment_config.train_setup.freeze_g_mapping_layers, experiment_config.train_setup.freeze_g_synthesis_layers)
             if phase.name in ["Dreg", "Dboth"]: # "Dmain" also exists but is apparently not to be fucked with
-                phase.module.freeze_lower_layers(experiment_config.train_setup.freeze_d)
-                #phase.module.check_freeze_lower_layers(experiment_config.train_setup.freeze_d)
+                #phase.module.freeze_lower_layers(experiment_config.train_setup.freeze_d)
+                #phase.module.check_freeze_lower_layers(50)
+                pass
 
             for real_img, real_c, gen_z, gen_c in zip(phase_real_img, phase_real_c, phase_gen_z, phase_gen_c):
                 loss.accumulate_gradients(phase=phase.name, real_img=real_img, real_c=real_c, gen_z=gen_z, gen_c=gen_c, gain=phase.interval, cur_nimg=cur_nimg)
