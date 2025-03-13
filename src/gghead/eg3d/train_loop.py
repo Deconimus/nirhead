@@ -348,8 +348,6 @@ def training_loop(
         copy_params(G_ema_loaded, G_ema, require_all=False)
         copy_params(D_loaded, D, require_all=False)
 
-        D.freeze_lower_layers(experiment_config.train_setup.freeze_d)
-
         resume_kimg = checkpoint
 
         if not experiment_config.train_setup.reset_cur_nimg:
@@ -361,6 +359,12 @@ def training_loop(
             resume_data = legacy.load_network_pkl(f)
         for name, module in [('G', G), ('D', D), ('G_ema', G_ema)]:
             copy_params_and_buffers(resume_data[name], module, require_all=False)
+
+    # Freeze lower generator layers
+    G.backbone.freeze_lower_layers(experiment_config.train_setup.freeze_g_mapping_layers, experiment_config.train_setup.freeze_g_synthesis_layers)
+
+    # FreezeD
+    D.freeze_lower_layers(experiment_config.train_setup.freeze_d)
 
     # ----------------------------------------------------------
     # Print network summary tables

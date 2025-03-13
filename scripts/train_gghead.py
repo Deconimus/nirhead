@@ -158,7 +158,9 @@ def main(
         n_feature_channels: int = 32,
         n_downsampling_layers: int = 1,
         freeze_generator: bool = False,
-        freeze_d: int = 0,
+        freeze_d_layers: int = 0,
+        freeze_g_mapping_layers: int = 0,
+        freeze_g_synthesis_layers: int = 0,
         smooth_D_intro: bool = True,
         smooth_res_intro: bool = False,
         smooth_G_intro: bool = True,
@@ -475,7 +477,6 @@ def main(
             use_dual_discrimination=use_dual_discrimination,
             mapping_network_config=MappingNetworkConfig(),
             block_config=DiscriminatorBlockConfig(
-                freeze_layers=opts.freezed,
             ),
             epilogue_config=DiscriminatorEpilogueConfig(
                 mbstd_group_size=opts.mbstd_group
@@ -574,7 +575,9 @@ def main(
         resume_checkpoint=resume_checkpoint,
         reset_cur_nimg=reset_cur_nimg,
         total_kimg=kimg,
-        freeze_d=freeze_d,
+        freeze_d=freeze_d_layers,
+        freeze_g_mapping_layers=freeze_g_mapping_layers,
+        freeze_g_synthesis_layers=freeze_g_synthesis_layers,
     )
 
     # Hyperparameters & settings.

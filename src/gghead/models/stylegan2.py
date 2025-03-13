@@ -315,3 +315,35 @@ class GGHGenerator(nn.Module):
         ws = self.mapping(z, c, truncation_psi=truncation_psi, truncation_cutoff=truncation_cutoff, update_emas=update_emas)
         img = self.synthesis(ws, update_emas=update_emas, **synthesis_kwargs)
         return img
+
+    def freeze_lower_layers(self, num_mapping_layers, num_synthesis_layers):
+        if num_mapping_layers > 0:
+            print("Freeze Generator mapping layers:")
+            n = num_mapping_layers
+            for layer in self.mapping.children():
+                if n > 0:
+                    print(layer)
+                    layer.requires_grad = False
+                    for param in layer.parameters():
+                        param.requires_grad = False
+                    n = n - 1
+                if n <= 0:
+                    break
+        if num_synthesis_layers > 0:
+            print("Freeze Generator synthesis layers:")
+            n = num_synthesis_layers
+            for res in self.synthesis.block_resolutions:
+                block = getattr(self.synthesis, f'b{res}')
+                print(res)
+                for layer in block.children():
+                    if n > 0:
+                        if isinstance(layer, SynthesisLayer):
+                            print("SynthesisLayer ["+str(layer.in_channels)+", "+str(layer.resolution)+", "+str(layer.resolution)+"]")
+                        else:
+                            print("ToRGBLayer [" + str(layer.in_channels) + ", " + str(layer.out_channels) + "]")
+                        layer.requires_grad = False
+                        for param in layer.parameters():
+                            param.requires_grad = False
+                        n = n - 1
+                if n <= 0:
+                    break

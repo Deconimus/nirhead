@@ -47,6 +47,8 @@ class GGHeadTrainSetup(Config):
     wandb_run_id: str = implicit()
 
     freeze_d: int = 0
+    freeze_g_mapping_layers: int = 0
+    freeze_g_synthesis_layers: int = 0
 
 
 @dataclass
