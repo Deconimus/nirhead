@@ -549,9 +549,10 @@ def training_loop(
             if phase.start_event is not None:
                 phase.start_event.record(torch.cuda.current_stream(device))
 
+
             # Accumulate gradients.
             phase.opt.zero_grad(set_to_none=True)
-            phase.module.requires_grad_(True) # wtf
+            phase.module.requires_grad_(True) # wtf... stupid bs
             if experiment_config.optimizer_config.freeze_generator and phase.name in ['Gmain', 'Gboth']:
                 for k, p in phase.module.named_parameters():
                     if "super_resolution" not in k:
@@ -559,13 +560,15 @@ def training_loop(
 
             if phase.name in ["Gmain", "Gboth"]:
                 phase.module.backbone.freeze_lower_layers(experiment_config.train_setup.freeze_g_mapping_layers, experiment_config.train_setup.freeze_g_synthesis_layers)
-            if phase.name in ["Dreg", "Dboth"]: # "Dmain" also exists but is apparently not to be fucked with for some fucking reason
+            if phase.name in ["Dreg", "Dboth"]: # "Dmain" also exists but is apparently not to be fucked with
                 phase.module.freeze_lower_layers(experiment_config.train_setup.freeze_d)
                 #phase.module.check_freeze_lower_layers(experiment_config.train_setup.freeze_d)
-            
+
             for real_img, real_c, gen_z, gen_c in zip(phase_real_img, phase_real_c, phase_gen_z, phase_gen_c):
                 loss.accumulate_gradients(phase=phase.name, real_img=real_img, real_c=real_c, gen_z=gen_z, gen_c=gen_c, gain=phase.interval, cur_nimg=cur_nimg)
+
             phase.module.requires_grad_(False)
+
 
             # Update weights.
             with torch.autograd.profiler.record_function(phase.name + '_opt'):
