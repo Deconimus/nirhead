@@ -156,21 +156,34 @@ class GaussianDiscriminator(nn.Module):
         return f'c_dim={self.c_dim:d}, img_resolution={self.img_resolution:d}, img_channels={self.img_channels:d}'
 
 
-    def freeze_lower_layers(self, num_layers):
+    def freeze_lower_layers(self, num_layers, console_out=False):
         if self.use_dual_discrimination or num_layers <= 0:
             return
-        print("FreezeD:")
+        if console_out: print("FreezeD:")
         n = num_layers
         for res in self.block_resolutions:
             block = getattr(self, f'b{res}')
-            print(res)
+            if console_out: print(res)
             for layer in block.children():
                 if n > 0:
-                    print(layer)
-                    layer.requires_grad = False
-                    layer.weight.requires_grad = False
+                    if console_out: print(layer)
+                    layer.requires_grad_(False)
+                    layer.weight.requires_grad_(False)
                     if not layer.bias is None:
-                        layer.bias.requires_grad = False
+                        layer.bias.requires_grad_(False)
                     n = n-1
+            if n <= 0:
+                break
+
+    def check_freeze_lower_layers(self, num_layers):
+        n = num_layers
+        for res in self.block_resolutions:
+            block = getattr(self, f'b{res}')
+            for layer in block.children():
+                if n > 0:
+                    print(layer.weight.requires_grad)
+                    if not layer.bias is None:
+                        print(layer.bias.requires_grad)
+                    n = n - 1
             if n <= 0:
                 break

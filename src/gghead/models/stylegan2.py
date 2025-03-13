@@ -316,34 +316,34 @@ class GGHGenerator(nn.Module):
         img = self.synthesis(ws, update_emas=update_emas, **synthesis_kwargs)
         return img
 
-    def freeze_lower_layers(self, num_mapping_layers, num_synthesis_layers):
+    def freeze_lower_layers(self, num_mapping_layers, num_synthesis_layers, console_out=False):
         if num_mapping_layers > 0:
-            print("Freeze Generator mapping layers:")
+            if console_out: print("Freeze Generator mapping layers:")
             n = num_mapping_layers
             for layer in self.mapping.children():
                 if n > 0:
-                    print(layer)
-                    layer.requires_grad = False
+                    if console_out: print(layer)
+                    layer.requires_grad_(False)
                     for param in layer.parameters():
-                        param.requires_grad = False
+                        param.requires_grad_(False)
                     n = n - 1
                 if n <= 0:
                     break
         if num_synthesis_layers > 0:
-            print("Freeze Generator synthesis layers:")
+            if console_out: print("Freeze Generator synthesis layers:")
             n = num_synthesis_layers
             for res in self.synthesis.block_resolutions:
                 block = getattr(self.synthesis, f'b{res}')
-                print(res)
+                if console_out: print(res)
                 for layer in block.children():
                     if n > 0:
                         if isinstance(layer, SynthesisLayer):
-                            print("SynthesisLayer ["+str(layer.in_channels)+", "+str(layer.resolution)+", "+str(layer.resolution)+"]")
+                            if console_out: print("SynthesisLayer ["+str(layer.in_channels)+", "+str(layer.resolution)+", "+str(layer.resolution)+"]")
                         else:
-                            print("ToRGBLayer [" + str(layer.in_channels) + ", " + str(layer.out_channels) + "]")
-                        layer.requires_grad = False
+                            if console_out: print("ToRGBLayer [" + str(layer.in_channels) + ", " + str(layer.out_channels) + "]")
+                        layer.requires_grad_(False)
                         for param in layer.parameters():
-                            param.requires_grad = False
+                            param.requires_grad_(False)
                         n = n - 1
                 if n <= 0:
                     break
