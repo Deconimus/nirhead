@@ -338,7 +338,6 @@ def main(
                 model_config.generator_config.super_resolution_config.n_downsampling_layers = n_downsampling_layers
 
         if freeze_d_layers is not None:
-            print("FUYK")
             model_config.discriminator_config.block_config.freeze_layers = freeze_d_layers
 
         dataset_config.path = data

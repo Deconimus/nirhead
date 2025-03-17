@@ -170,9 +170,8 @@ class GaussianDiscriminator(nn.Module):
                 if n > 0:
                     if console_out: print(layer)
                     layer.requires_grad_(False)
-                    layer.weight.requires_grad_(False)
-                    if not layer.bias is None:
-                        layer.bias.requires_grad_(False)
+                    #for param in layer.parameters():
+                    #    param.requires_grad_(False)
                     n = n-1
             if n <= 0:
                 break
@@ -184,8 +183,8 @@ class GaussianDiscriminator(nn.Module):
             block = getattr(self, f'b{res}')
             for layer in block.children():
                 if n > 0:
-                    for param in layer.parameters():
-                        print(param.requires_grad)
+                    #for param in layer.parameters():
+                    #    print(param.requires_grad)
                     n = n - 1
             if n <= 0:
                 break
