@@ -360,11 +360,11 @@ def training_loop(
         for name, module in [('G', G), ('D', D), ('G_ema', G_ema)]:
             copy_params_and_buffers(resume_data[name], module, require_all=False)
 
-    # Freeze lower generator layers
-    #G.backbone.freeze_lower_layers(experiment_config.train_setup.freeze_g_mapping_layers, experiment_config.train_setup.freeze_g_synthesis_layers, console_out=True)
+    # Freeze lower generator layers (just for console output here)
+    G.backbone.freeze_lower_layers(experiment_config.train_setup.freeze_g_mapping_layers, experiment_config.train_setup.freeze_g_synthesis_layers, console_out=True)
 
-    # FreezeD
-    #D.freeze_lower_layers(experiment_config.train_setup.freeze_d, console_out=True)
+    # FreezeD (just for console output here)
+    D.freeze_lower_layers(experiment_config.train_setup.freeze_d, console_out=True)
 
     # ----------------------------------------------------------
     # Print network summary tables
@@ -557,8 +557,8 @@ def training_loop(
                     if "super_resolution" not in k:
                         p.requires_grad_(False)
 
-            #if phase.name in ["Gmain", "Gboth"]:
-            #    phase.module.backbone.freeze_lower_layers(experiment_config.train_setup.freeze_g_mapping_layers, experiment_config.train_setup.freeze_g_synthesis_layers)
+            if phase.name in ["Gmain", "Greg", "Gboth"]:  # who is Greg?
+                phase.module.backbone.freeze_lower_layers(experiment_config.train_setup.freeze_g_mapping_layers, experiment_config.train_setup.freeze_g_synthesis_layers)
             if phase.name in ["Dreg", "Dboth"]: # "Dmain" also exists but is apparently not to be fucked with
                 #phase.module.freeze_lower_layers(experiment_config.train_setup.freeze_d)
                 #phase.module.check_freeze_lower_layers(50)
@@ -568,7 +568,6 @@ def training_loop(
                 loss.accumulate_gradients(phase=phase.name, real_img=real_img, real_c=real_c, gen_z=gen_z, gen_c=gen_c, gain=phase.interval, cur_nimg=cur_nimg)
 
             phase.module.requires_grad_(False)
-
 
             # Update weights.
             with torch.autograd.profiler.record_function(phase.name + '_opt'):

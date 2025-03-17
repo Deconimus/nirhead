@@ -324,8 +324,8 @@ class GGHGenerator(nn.Module):
                 if n > 0:
                     if console_out: print(layer)
                     layer.requires_grad_(False)
-                    #for param in layer.parameters():
-                    #    param.requires_grad_(False)
+                    for param in layer.parameters():
+                        param.requires_grad_(False)
                     n = n - 1
                 if n <= 0:
                     break
@@ -342,8 +342,8 @@ class GGHGenerator(nn.Module):
                         else:
                             if console_out: print("ToRGBLayer [" + str(layer.in_channels) + ", " + str(layer.out_channels) + "]")
                         layer.requires_grad_(False)
-                        #for param in layer.parameters():
-                        #    param.requires_grad_(False)
+                        for param in layer.parameters():
+                            param.requires_grad_(False)
                         n = n - 1
                 if n <= 0:
                     break
