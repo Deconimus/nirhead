@@ -38,6 +38,7 @@ dependencies:
       - mediapy
       - wandb
       - pytorch_lightning
+      - torchsummary
 
       # For EG3D visualizer
       - eg3d@git+https://github.com/Deconimus/eg3d.git

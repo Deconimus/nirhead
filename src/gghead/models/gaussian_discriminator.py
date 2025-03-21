@@ -115,7 +115,7 @@ class GaussianDiscriminator(nn.Module):
             block = DiscriminatorBlock(in_channels, tmp_channels, out_channels, resolution=res,
                                        first_layer_idx=cur_layer_idx, use_fp16=use_fp16, architecture=block_architecture,
                                        **asdict(config.block_config), **common_kwargs)
-            print(config.block_config.freeze_layers)
+            print(config.block_config.freeze_layers) # debug freeze_d freezed
             if is_new_layer:
                 block.conv1.weight.data.zero_()
             setattr(self, f'b{res}', block)
