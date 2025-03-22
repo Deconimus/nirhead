@@ -6,7 +6,7 @@ import numpy as np
 
 from torch.utils.data import DataLoader
 
-from gghead.models.classifier import ResNet, TinyVGG
+from gghead.models.classifier import ResNet, TinyVGG, VIT
 from gghead.dataset.classification_dataset import ClassificationDataSet
 
 
@@ -30,6 +30,9 @@ def main(args):
     elif args.model.lower() == "tvgg" or args.model.lower() == "tinyvgg":
         model = TinyVGG(img_res=args.img_res, input_channel=1, hidden_units=args.ch_base, num_classes=len(args.labels), crop=(args.crop_h, 0)).to(device)
         name = "tinyvgg_units" + str(args.ch_base) + (f"_croph{args.crop_h}" if args.crop_h else "") + "_" + str(int(time.time()))
+    elif args.model.lower() == "vit" or args.model.lower() == "simplevit":
+        model = VIT(img_res=args.img_res, img_ch=1, num_classes=len(args.labels), crop=(args.crop_h, 0), patch_size=args.patch_size, mlp_dim=args.ch_base).to(device)
+        name = f"simplevit{args.patch_size}_mlpdim{args.ch_base}" + (f"_croph{args.crop_h}" if args.crop_h else "") + "_" + str(int(time.time()))
     #print(model)
     #print("Total parameters: "+str(sum(p.numel() for p in model.parameters())))
     #print(torchsummary.summary(model, input_size=(1, 128, 128)))
@@ -144,6 +147,7 @@ if __name__ == "__main__":
     parser.add_argument("--resume", type=str)
     parser.add_argument("-l", "--labels", nargs='+', required=True)
     parser.add_argument("--img_res", type=int, default=128)
+    parser.add_argument("--patch_size", type=int, default=16)
     parser.add_argument("--crop_h", type=int, default=0)
     parser.add_argument("--ch_base", type=int, default=32)
     parser.add_argument("--epilogue", action="store_true", default=False)
