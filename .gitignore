@@ -11,5 +11,5 @@ _pycache__
 /docs/build/
 dist
 
-models/
-renderings/
+/models/
+/renderings/
