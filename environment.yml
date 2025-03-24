@@ -48,3 +48,6 @@ dependencies:
 
       # Data processing
       - visage >= 0.2.2
+
+      - torch-summary
+      - vit-pytorch

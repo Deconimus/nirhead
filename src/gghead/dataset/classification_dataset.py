@@ -6,7 +6,7 @@ from elias.util.io import resize_img
 
 
 class ClassificationDataSet:
-    def __init__(self, root, resolution=None, mode=None, labelclasses=None, subdir="", flip=False):
+    def __init__(self, root, resolution=None, mode=None, labelclasses=None, subdir="", flip=False, inference=False):
         self.root = root
         if isinstance(self.root, str):
             self.root = pathlib.Path(self.root)
@@ -15,6 +15,7 @@ class ClassificationDataSet:
         self.labelclasses = labelclasses
         self.subdir = subdir.strip()
         self.flip = flip
+        self.inference = inference
 
         self._zipfile = None
         self._type = None
@@ -31,17 +32,18 @@ class ClassificationDataSet:
             self.images = [str(f.absolute())[len(str(self.root.absolute()))+1:] for f in (self.root / self.subdir).rglob("*.png")]
 
         labeldata = {}
-        with self._open_file("labels.json") as f:
-            labeldata = json.load(f)
-        self.labels = []
-        for file in self.images:
-            file = file.replace("\\", "/")
-            assert(file in labeldata.keys())
-            l = [float(labeldata[file][cl]) for cl in self.labelclasses if cl in labeldata[file].keys()]
-            assert(len(l) == len(self.labelclasses))
-            self.labels.append(np.array(l, dtype=np.float32))
+        if not self.inference:
+            with self._open_file("labels.json") as f:
+                labeldata = json.load(f)
+            self.labels = []
+            for file in self.images:
+                file = file.replace("\\", "/")
+                assert(file in labeldata.keys())
+                l = [float(labeldata[file][cl]) for cl in self.labelclasses if cl in labeldata[file].keys()]
+                assert(len(l) == len(self.labelclasses))
+                self.labels.append(np.array(l, dtype=np.float32))
 
-        assert(len(self.images) == len(self.labels))
+        assert(self.inference or len(self.images) == len(self.labels))
 
     def __len__(self):
         return len(self.images) if not self.flip else len(self.images)*2
@@ -52,8 +54,17 @@ class ClassificationDataSet:
             flip = idx % 2 == 1
             idx = idx // 2
         img = self._load_image(self.images[idx], flip=flip)
+        
+        if self.inference:
+            return img
+
         label = self.labels[idx]
         return img, label
+
+    def get_image_path(self, idx):
+        if self.flip:
+            idx = idx // 2
+        return self.images[idx]
 
     def _get_zipfile(self):
         assert self._type == 'zip'

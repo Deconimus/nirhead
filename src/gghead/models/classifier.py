@@ -1,3 +1,4 @@
+import time
 from typing import Optional
 import numpy as np
 import torch, torchvision
@@ -18,6 +19,7 @@ def make_crop_module(img_res: int, crop, identity=True):
             blocks.append(torchvision.transforms.Resize((self.img_res, self.img_res))),
         )
     return nn.Identity() if identity else None
+
 
 class TinyVGG(nn.Module):
 
@@ -150,7 +152,7 @@ class ResNet(nn.Module):
 
 class VIT(nn.Module):
 
-    def __init__(self, img_res: int, img_ch: int, num_classes: int, crop=(0, 0), patch_size=16, depth=6, heads=16, mlp_dim=1024):
+    def __init__(self, img_res: int, img_ch: int, num_classes: int, crop=(0, 0), patch_size=16, depth=6, heads=16, mlp_dim=1024, dim=None):
         super(VIT, self).__init__()
         self.img_res = img_res
         self.img_ch = img_ch
@@ -159,6 +161,7 @@ class VIT(nn.Module):
         self.depth = depth
         self.heads = heads
         self.mlp_dim = mlp_dim
+        self.dim = dim
 
         self.crop = make_crop_module(img_res, crop)
         self.vit = SimpleViT(
@@ -166,7 +169,7 @@ class VIT(nn.Module):
             channels=self.img_ch,
             patch_size = self.patch_size,
             num_classes = self.num_classes,
-            dim = self.mlp_dim//2, #1024,
+            dim = self.dim if self.dim else self.mlp_dim//2, #1024,
             depth = self.depth,
             heads = self.heads,
             mlp_dim = self.mlp_dim,
@@ -177,3 +180,32 @@ class VIT(nn.Module):
         x = self.vit(x)
         #print(x.shape)
         return x
+
+
+def load_classification_model(cfg, device, weights_file=None):
+    model = None
+    name = ""
+    
+    if cfg["model"].lower() == "resnet":
+        model = ResNet(img_res=cfg["img_res"], img_ch=1, num_classes=len(cfg["labels"]), crop=(cfg["crop_h"], 0), ch_base=cfg["ch_base"], epilogue=cfg["epilogue"]).to(device)
+        name = "resnet_chbase" + str(cfg["ch_base"]) + ("_epilogue" if cfg["epilogue"] else "") + (f"_croph{cfg['crop_h']}" if cfg["crop_h"] else "")  + "_" + str(int(time.time()))
+        
+    elif cfg["model"].lower() == "tvgg" or cfg["model"].lower() == "tinyvgg":
+        model = TinyVGG(img_res=cfg["img_res"], input_channel=1, hidden_units=cfg["ch_base"], num_classes=len(cfg["labels"]), crop=(cfg["crop_h"], 0)).to(device)
+        name = "tinyvgg_units" + str(cfg["ch_base"]) + (f"_croph{cfg['crop_h']}" if cfg["crop_h"] else "")  + "_" + str(int(time.time()))
+        
+    elif cfg["model"].lower() == "vit" or cfg["model"].lower() == "simplevit":
+        mlp_dim = cfg["vit_mlp_dim"] if "vit_mlp_dim" in cfg.keys() else cfg["ch_base"]
+        dim = cfg["vit_dim"] if "vit_dim" in cfg.keys() else None
+        heads = cfg["vit_heads"] if "vit_heads" in cfg.keys() else 16
+        depth = cfg["vit_depth"] if "vit_depth" in cfg.keys() else 6
+        
+        model = VIT(img_res=cfg["img_res"], img_ch=1, num_classes=len(cfg["labels"]), crop=(cfg["crop_h"], 0), patch_size=cfg["patch_size"], mlp_dim=mlp_dim, dim=dim, heads=heads, depth=depth).to(device)
+        name = f"simplevit{cfg['patch_size']}_mlpdim{mlp_dim}" + (f"_dim{dim}" if dim else "") + f"_heads{heads}_depth{depth}" + (f"_croph{cfg['crop_h']}" if cfg["crop_h"] else "") + "_" + str(int(time.time()))
+    
+    if weights_file:
+        with open(weights_file, "rb") as f:
+            model.load_state_dict(torch.load(f, weights_only=True, map_location=device))
+    
+    return model, name
+
