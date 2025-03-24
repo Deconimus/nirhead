@@ -9,6 +9,8 @@ from torch.utils.data import DataLoader
 from gghead.models import classifier
 from gghead.dataset.classification_dataset import ClassificationDataSet
 
+from label_accuracy import evaluate_accuracy
+
 
 def main(args):
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
@@ -26,7 +28,6 @@ def main(args):
     
     dl_workers = multiprocessing.cpu_count() if not args.src.lower().endswith(".zip") else 1
     
-    src_dir = pathlib.Path(args.src)
     dataset = ClassificationDataSet(args.src, resolution=model_cfg["img_res"], mode="gray", inference=True)
     data_loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, num_workers=dl_workers, drop_last=False)
     
@@ -34,31 +35,43 @@ def main(args):
     
     print(f"Labeling {len(dataset)} images:")
     
+    labels = predict_labels(model, data_loader, label_classes, device, args.batch_size)
+    
+    if args.dst:
+        dst_file = pathlib.Path(args.dst)
+        with open(dst_file, "w+") as f:
+            json.dump(labels, f, indent=(2 if args.prettyprint else None))
+        print(dst_file)
+    
+    if args.eval_gt:
+        with open(pathlib.Path(args.eval_gt), "r") as f:
+            labels_gt = json.load(f)
+        evaluate_accuracy(gt=labels_gt, pred=labels, filter=True)
+    
+    return labels
+    
+
+def predict_labels(model, data_loader, label_classes, device, batch_size):
     labels = {}
-    for batch, x in tqdm(enumerate(data_loader), total=int(math.ceil(len(dataset) / args.batch_size))):
+    for batch, x in tqdm(enumerate(data_loader), total=int(math.ceil(len(data_loader.dataset) / batch_size))):
         x = x.to(device)
         y_pred = model(x)
-        
-        idx_start = batch * args.batch_size
+
+        idx_start = batch * batch_size
         for i in range(y_pred.shape[0]):
             idx = i + idx_start
-            if idx > len(dataset):
+            if idx > len(data_loader.dataset):
                 break
-                
-            image_file_rel = dataset.get_image_path(idx)
+
+            image_file_rel = data_loader.dataset.get_image_path(idx)
             labels[image_file_rel] = {}
-            
+
             for cls_idx, cls in enumerate(label_classes):
                 if cls_idx > y_pred.shape[1]:
                     break
                 labels[image_file_rel][cls] = y_pred[i, cls_idx].item() > 0.5
-                
-    dst_file = pathlib.Path(args.dst) if args.dst else src_dir / "labels_predicted.json"
-    with open(dst_file, "w+") as f:
-        json.dump(labels, f, indent=(2 if args.prettyprint else None))
-    
-    print(dst_file)
-    
+    return labels
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -66,8 +79,9 @@ if __name__ == "__main__":
     parser.add_argument("-l", "--labels", nargs='+', default=None)
     parser.add_argument("-b", "--batch_size", type=int, default=128)
     parser.add_argument("-s", "--src", type=str)
-    parser.add_argument("-d", "--dst", type=str, default=None)
+    parser.add_argument("-d", "--dst", type=str)
     parser.add_argument("--prettyprint", action="store_true", default=False)
+    parser.add_argument("--eval_gt", type=str)
     args = parser.parse_args()
 
     gc.collect()

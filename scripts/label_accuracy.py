@@ -11,25 +11,33 @@ def main(args):
         pred = json.load(f)
         
     labels = args.labels
+
+    evaluate_accuracy(gt, pred, labels=labels, filter=args.namefilter)
+
+
+def evaluate_accuracy(gt, pred, labels=None, filter=False, noprint=False):
     if not labels:
         labels = list(pred[list(pred.keys())[0]].keys())
-    
+
     correct, n = 0, 0
     for img in pred.keys():
-        img_gt = namefilter(img) if args.namefilter else img
+        img_gt = namefilter(img) if filter else img
         if not img_gt in gt.keys(): continue
-        
+
         eq = all([gt[img_gt][cls] == pred[img][cls] for cls in labels])
         if eq:
             correct += 1
         n += 1
-    
+
     if n <= 0:
-        print("Error: no key matches.")
+        if not noprint:
+            print("Error: no key matches.")
         return
-        
+
     acc = correct / n
-    print(f"Accuracy over {n} labeled images is {acc * 100.0:.2f}%")
+    if not noprint:
+        print(f"Accuracy over {n} labeled images is {acc * 100.0:.2f}%")
+    return acc
 
 
 def namefilter(s):

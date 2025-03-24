@@ -10,6 +10,9 @@ from torch.utils.data import DataLoader
 from gghead.models import classifier
 from gghead.dataset.classification_dataset import ClassificationDataSet
 
+from run_classifier import predict_labels
+from label_accuracy import evaluate_accuracy
+
 
 def main(args):
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
@@ -76,6 +79,19 @@ def main(args):
         with open(args_file, "w+") as f:
             json.dump(vars(args), f, indent=2)
         print("Saved model arguments: " + str(args_file))
+        
+    if args.eval:
+        print(f"Evaluating model on {args.eval[0]}:")
+        eval_dataset = ClassificationDataSet(args.eval[0], resolution=args.img_res, mode="gray", inference=True)
+        dl_eval = DataLoader(eval_dataset, batch_size=args.batch_size, shuffle=False, num_workers=dl_workers, drop_last=False)
+        
+        labels_gt = {}
+        with open(pathlib.Path(args.eval[1]), "r") as f:
+            labels_gt = json.load(f)
+        labels_pred = predict_labels(model, dl_eval, args.labels, device, args.batch_size)
+        
+        evaluate_accuracy(gt=labels_gt, pred=labels_pred, filter=True)
+        
 
 def train_step(data_loader, model, loss_fn, optimizer, device, pbar):
     train_loss, train_acc = 0.0, 0.0
@@ -163,6 +179,7 @@ if __name__ == "__main__":
     parser.add_argument("--model", type=str, default="resnet")
     parser.add_argument("--flip_aug", action="store_true", default=False)
     parser.add_argument("--stop_at_acc", type=float)
+    parser.add_argument("--eval", type=str, nargs=2)
     args = parser.parse_args()
 
     gc.collect()
