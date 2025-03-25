@@ -102,7 +102,7 @@ class GGHeadConfig(Config):
     synthesis_network_config: SynthesisNetworkConfig = SynthesisNetworkConfig()
     rendering_config: RenderingConfig = RenderingConfig()
     super_resolution_config: SuperResolutionConfig = SuperResolutionConfig()
-
+    
     uv_attributes: List[GaussianAttribute] = field(default_factory=lambda: [
         GaussianAttribute.POSITION])  # Which attributes should be predicted in UV space
     n_triplane_channels: int = 16  # number of channels for each TriPlane

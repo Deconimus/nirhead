@@ -1,14 +1,13 @@
-import os, gc, argparse, pathlib, multiprocessing, json, time, math
-import torch, torchvision, torchsummary
+import os, gc, argparse, pathlib, multiprocessing, json, math
+import torch
 from tqdm import tqdm
 from torch import nn
 from timeit import default_timer as timer
-import numpy as np
-
 from torch.utils.data import DataLoader
+from dataclasses import asdict
 
-from gghead.models import classifier
-from gghead.dataset.classification_dataset import ClassificationDataSet
+from nirhead.models import classifier
+from nirhead.dataset.classification_dataset import ClassificationDataSet
 
 from run_classifier import predict_labels
 from label_accuracy import evaluate_accuracy
@@ -28,7 +27,8 @@ def main(args):
     print(f"Trainset size: {len(trainset)} ({len(trainset) // args.batch_size} batches of {args.batch_size})")
     print(f"Testset size: {len(testset)} ({len(testset) // args.batch_size} batches of {args.batch_size})")
     
-    model, name = classifier.load_classification_model(vars(args), device)
+    model_cfg = classifier.ClassifierConfig.from_dict(dict(vars(args)))
+    model, name = classifier.load_classification_model(model_cfg, device)
     
     loss_fn = nn.BCEWithLogitsLoss()
     optimizer = torch.optim.Adam(params=model.parameters(), lr=0.0001)
@@ -54,6 +54,9 @@ def main(args):
             if args.stop_at_acc and test_acc >= args.stop_at_acc:
                 print(f"Test accuracy goal reached, stopping training at test_acc={test_acc}")
                 break
+            if args.stop_at_train_loss and train_loss <= args.stop_at_train_loss:
+                print(f"Train loss goal reached, stopping training at train_loss={train_loss}")
+                break
             if (epoch+1) % 100 == 0 and args.logdir:
                 save_log(data, args.logdir, name)
     except KeyboardInterrupt:
@@ -63,12 +66,14 @@ def main(args):
     print(f"Train time on {device}: {(train_time_end-train_time_start):.2f}s")
     print(f"Best test accuracy: {max(data['test_acc'])} (epoch {data['test_acc'].index(max(data['test_acc']))})")
 
+    model_class_concat = "_".join(args.labels)
+
     if args.logdir:
-        save_log(data, args.logdir, name)
+        save_log(data, pathlib.Path(args.logdir) / model_class_concat, name)
 
     if args.savedir:
         # save model weights
-        savedir = pathlib.Path(args.savedir) / name
+        savedir = pathlib.Path(args.savedir) / model_class_concat / name
         os.makedirs(savedir, exist_ok=True)
         weights_file = savedir / ("weights"+ ".pth")
         torch.save(model.state_dict(), weights_file)
@@ -77,7 +82,7 @@ def main(args):
         # save model arguments
         args_file = savedir / "args.json"
         with open(args_file, "w+") as f:
-            json.dump(vars(args), f, indent=2)
+            json.dump(model_cfg.to_json(), f, indent=2)
         print("Saved model arguments: " + str(args_file))
         
     if args.eval:
@@ -150,7 +155,6 @@ def calc_accuracy(y_true, y_pred):
 
 
 def save_log(data, logdir, name):
-    logdir = pathlib.Path(args.logdir)
     os.makedirs(logdir, exist_ok=True)
     dst_file = logdir / (name + ".json")
     with open(dst_file, "w+") as f:
@@ -161,25 +165,30 @@ def save_log(data, logdir, name):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-d", "--dataset", type=str)
-    parser.add_argument("--resume", type=str)
+    parser.add_argument("--model", type=str, default="resnet")
     parser.add_argument("-l", "--labels", nargs='+', required=True)
     parser.add_argument("--img_res", type=int, default=128)
-    parser.add_argument("--patch_size", type=int, default=16)
     parser.add_argument("--crop_h", type=int, default=0)
-    parser.add_argument("--ch_base", type=int, default=32)
-    parser.add_argument("--epilogue", action="store_true", default=False)
-    parser.add_argument("--vit_mlp_dim", type=int, default=None)
-    parser.add_argument("--vit_dim", type=int, default=None)
-    parser.add_argument("--vit_depth", type=int, default=6)
-    parser.add_argument("--vit_heads", type=int, default=16)
     parser.add_argument("-b", "--batch_size", type=int, default=128)
     parser.add_argument("-e", "--epochs", type=int, default=100)
+    parser.add_argument("--flip_aug", action="store_true", default=False)
+    
     parser.add_argument("--logdir", type=str)
     parser.add_argument("--savedir", type=str)
-    parser.add_argument("--model", type=str, default="resnet")
-    parser.add_argument("--flip_aug", action="store_true", default=False)
-    parser.add_argument("--stop_at_acc", type=float)
+    
+    parser.add_argument("--resume", type=str)
     parser.add_argument("--eval", type=str, nargs=2)
+    parser.add_argument("--stop_at_acc", type=float)
+    parser.add_argument("--stop_at_train_loss", type=float)
+    
+    parser.add_argument("--ch_base", type=int, default=32)
+    parser.add_argument("--epilogue", action="store_true", default=False)
+    
+    parser.add_argument("--patch_size", type=int, default=16)
+    parser.add_argument("--vit_mlp_dim", type=int, default=None)
+    parser.add_argument("--vit_dim", type=int, default=None)
+    parser.add_argument("--vit_depth", type=int, default=4)
+    parser.add_argument("--vit_heads", type=int, default=8)
     args = parser.parse_args()
 
     gc.collect()

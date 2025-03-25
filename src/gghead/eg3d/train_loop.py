@@ -42,6 +42,9 @@ from gghead.models.gaussian_discriminator import GaussianDiscriminator
 from gghead.models.gghead_model import GGHeadModel
 from gghead.util.logging import LoggerBundle
 from gghead.util.metrics import fid100, fid1k, fid50k_full, fid10k
+from gghead.env import GGHEAD_MODELS_PATH
+
+from nirhead.models.classifier import ClassifierConfig, load_classification_model
 
 
 # ----------------------------------------------------------------------------
@@ -277,14 +280,14 @@ def training_loop(
             mapping_kwargs=asdict(discriminator_config.mapping_network_config),
             epilogue_kwargs=asdict(discriminator_config.epilogue_config)).train().requires_grad_(False).to(device)  # subclass of torch.nn.Module
     G_ema = copy.deepcopy(G).eval()
-
+    
     # ----------------------------------------------------------
     # Resume from existing pickle
     # ----------------------------------------------------------
     if do_resume:
         resume_run = experiment_config.train_setup.resume_run
         checkpoint = experiment_config.train_setup.resume_checkpoint
-
+        
         print(f'Resuming from {resume_run} - checkpoint {checkpoint}')
         model_manager_loaded = find_model_manager(resume_run)
         G_loaded = model_manager_loaded.load_checkpoint(checkpoint)
@@ -347,7 +350,7 @@ def training_loop(
         copy_params(G_loaded, G, require_all=False)
         copy_params(G_ema_loaded, G_ema, require_all=False)
         copy_params(D_loaded, D, require_all=False)
-
+        
         resume_kimg = checkpoint
 
         if not experiment_config.train_setup.reset_cur_nimg:
@@ -365,7 +368,24 @@ def training_loop(
 
     # FreezeD (just for console output here)
     D.freeze_lower_layers(experiment_config.train_setup.freeze_d, console_out=True)
-
+    
+    # Load Classifier
+    if experiment_config.model_config.classifier:
+        classifier_dir = pathlib.Path(GGHEAD_MODELS_PATH) / "classifier" / experiment_config.model_config.classifier
+        with open(classifier_dir / "args.json", "r") as f:
+            classifier_cfg = ClassifierConfig.from_json(json.load(f))
+        
+        classifier_weights = "checkpoints/" + experiment_config.train_setup.resume_run + "/checkpoint-" + str(experiment_config.train_setup.resume_checkpoint) + ".pth"
+        if not do_resume or not os.path.exists(classifier_dir / classifier_weights):
+            classifier_weights = "weights.pth"
+        
+        C, C_name = load_classification_model(
+            cfg=classifier_cfg,
+            weights_file=classifier_dir / classifier_weights,
+            device=device,
+        )
+        print(f"Loaded classifier {C_name} with weights from \"{classifier_dir / classifier_weights}\".")
+    
     # ----------------------------------------------------------
     # Print network summary tables
     # ----------------------------------------------------------

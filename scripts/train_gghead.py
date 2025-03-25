@@ -20,6 +20,8 @@ from gghead.models.gaussian_discriminator import GaussianDiscriminatorConfig, Di
 from gghead.models.gghead_model import GGHeadConfig, MappingNetworkConfig, SynthesisNetworkConfig, RenderingConfig, SuperResolutionConfig
 from gghead.util.metrics import fid100, fid1k, fid50k_full, fid10k
 
+from nirhead.models.classifier import ClassifierConfig
+
 
 def main(
         cfg: str,  # Base configuration
@@ -165,7 +167,11 @@ def main(
         smooth_res_intro: bool = False,
         smooth_G_intro: bool = True,
         smooth_G_blend: bool = True,
-
+        
+        static_attributes: Optional[list] = None,
+        classifier: Optional[str] = None,
+        train_classifier_after_epochs: Optional[int] = None,
+        
         # Logging
         metrics: str = 'fid100,fid1k,fid10k',
         image_snapshot_ticks: int = 50,
@@ -210,6 +216,11 @@ def main(
         model_config: GGHeadGANConfig = model_manager.load_model_config()
         optimizer_config: GGHeadGANOptimizerConfig = model_manager.load_optimization_config()
         resume_checkpoint = model_manager._resolve_checkpoint_id(resume_checkpoint)
+
+        if static_attributes is not None:
+            model_config.static_attributes = static_attributes
+        if classifier is not None:
+            model_config.static_attributes = classifier
 
         if overwrite_n_subdivisions is not None:
             model_config.generator_config.n_flame_subdivisions = overwrite_n_subdivisions
@@ -485,7 +496,7 @@ def main(
             ),
             epilogue_config=DiscriminatorEpilogueConfig(
                 mbstd_group_size = opts.mbstd_group
-            )
+            ),
         )
         # Communicate dataset -> model config
         generator_config.c_dim = c_dim
@@ -495,7 +506,14 @@ def main(
             discriminator_config.c_dim = 0
         discriminator_config.img_resolution = resolution
         discriminator_config.img_channels = img_channels
-        model_config = GGHeadGANConfig(generator_config, discriminator_config, generator_type=generator_type)
+        
+        model_config = GGHeadGANConfig(
+            generator_config=generator_config,
+            discriminator_config=discriminator_config,
+            generator_type=generator_type,
+            static_attributes=static_attributes,
+            classifier=classifier,
+        )
 
         # ----------------------------------------------------------
         # Optimizer config
@@ -583,6 +601,7 @@ def main(
         freeze_d=freeze_d_layers,
         freeze_g_mapping_layers=freeze_g_mapping_layers,
         freeze_g_synthesis_layers=freeze_g_synthesis_layers,
+        train_classifier_after_epochs=train_classifier_after_epochs
     )
 
     # Hyperparameters & settings.

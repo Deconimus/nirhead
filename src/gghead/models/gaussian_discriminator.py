@@ -46,7 +46,7 @@ class GaussianDiscriminatorConfig(Config):
     img_resolution: int = implicit()  # Input resolution.
     img_channels: int = implicit()  # Number of input color channels.
     pretrained_resolution: Optional[int] = implicit()
-
+    
     @staticmethod
     def from_eg3d_config(
             c_dim,  # Conditioning label (C) dimensionality.

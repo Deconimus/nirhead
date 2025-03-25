@@ -1,13 +1,10 @@
 import os, gc, argparse, pathlib, multiprocessing, json, math
-import torch, torchvision, torchsummary
-import numpy as np
-from torch import nn
-from timeit import default_timer as timer
+import torch
 from tqdm import tqdm
 from torch.utils.data import DataLoader
 
-from gghead.models import classifier
-from gghead.dataset.classification_dataset import ClassificationDataSet
+from nirhead.models import classifier
+from nirhead.dataset.classification_dataset import ClassificationDataSet
 
 from label_accuracy import evaluate_accuracy
 
@@ -20,15 +17,14 @@ def main(args):
     if not os.path.exists(model_dir):
         print(f"Model directory does not exist: {model_dir}")
         return
-    model_cfg = {}
     with open(model_dir / "args.json", "r") as f:
-        model_cfg = json.load(f)
+        model_cfg = classifier.ClassifierConfig.from_json(json.load(f))
     weights_file = model_dir / "weights.pth"
-    label_classes = args.labels if args.labels else model_cfg["labels"]
+    label_classes = args.labels if args.labels else model_cfg.labels
     
     dl_workers = multiprocessing.cpu_count() if not args.src.lower().endswith(".zip") else 1
     
-    dataset = ClassificationDataSet(args.src, resolution=model_cfg["img_res"], mode="gray", inference=True)
+    dataset = ClassificationDataSet(args.src, resolution=model_cfg.img_res, mode="gray", inference=True)
     data_loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, num_workers=dl_workers, drop_last=False)
     
     model, name = classifier.load_classification_model(model_cfg, device, weights_file)

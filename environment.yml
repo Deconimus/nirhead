@@ -51,3 +51,4 @@ dependencies:
 
       - torch-summary
       - vit-pytorch
+      - dacite

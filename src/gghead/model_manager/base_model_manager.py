@@ -49,6 +49,8 @@ class GGHeadTrainSetup(Config):
     freeze_d: int = 0
     freeze_g_mapping_layers: int = 0
     freeze_g_synthesis_layers: int = 0
+    
+    train_classifier_after_epochs: Optional[int] = None
 
 
 @dataclass
@@ -74,6 +76,8 @@ class GGHeadGANConfig(Config):
     # generator_config: TriPlaneGaussianGeneratorConfig
     discriminator_config: GaussianDiscriminatorConfig
     generator_type: GGHGeneratorType = 'gaussians'
+    static_attributes: Optional[list] = None
+    classifier: Optional[str] = None
 
 
 @dataclass
