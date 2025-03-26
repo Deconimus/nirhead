@@ -102,6 +102,7 @@ class GGHeadStyleGAN2Loss(StyleGAN2Loss):
                  device,
                  G,
                  D,
+                 C,
                  augment_pipe=None,
                  config: GGHeadStyleGAN2LossConfig = GGHeadStyleGAN2LossConfig(),
                  logger_bundle: LoggerBundle = LoggerBundle()) -> None:
@@ -179,6 +180,9 @@ class GGHeadStyleGAN2Loss(StyleGAN2Loss):
             logits = self.D(img, c, update_emas=update_emas, alpha_new_layers=alpha_new_layers_disc)
         return logits
 
+    def run_C(self, img, c, update_emas=False):
+        pass
+
     def loss_clamp_l2(self, source, target, mask=None, clamp=True):
         """
         Args:
@@ -236,8 +240,7 @@ class GGHeadStyleGAN2Loss(StyleGAN2Loss):
                                    1) if self._config.plane_resolution_start_kimg is not None else None
         effective_res_disc = None
         if self._config.effective_res_disc_start_kimg is not None:
-            alpha_effective_res_disc = min((cur_nimg - self._config.effective_res_disc_start_kimg * 1e3) / (self._config.effective_res_disc_blend_kimg * 1e3),
-                                        1)
+            alpha_effective_res_disc = min((cur_nimg - self._config.effective_res_disc_start_kimg * 1e3) / (self._config.effective_res_disc_blend_kimg * 1e3), 1)
             pretrained_resolution = self._config.pretrained_resolution
             new_resolution = real_img.shape[2]
             effective_res_disc = int(alpha_effective_res_disc * new_resolution + (1 - alpha_effective_res_disc) * pretrained_resolution)
@@ -283,9 +286,12 @@ class GGHeadStyleGAN2Loss(StyleGAN2Loss):
                     gen_img, _gen_ws = self.run_G(gen_z, gen_c, swapping_prob=swapping_prob, neural_rendering_resolution=neural_rendering_resolution)
                 gen_logits = self.run_D(gen_img, gen_c, blur_sigma=blur_sigma, alpha_new_layers_disc=alpha_new_layers_disc, effective_res_disc=effective_res_disc,
                                         other_img=real_img)
-
+                
+                # TODO: How exactly is the Discriminator not also backpropagated here? And how is the Generator not backpropagated later in Discriminator phases?
+                # TODO: Run Classifier and add loss to loss_Gmain. Maybe also in D phases?
+                
                 loss_Gmain = torch.nn.functional.softplus(-gen_logits)
-
+                
                 if loss_Gmain.isnan().any():
                     print("loss_Gmain IS NAN!")
 

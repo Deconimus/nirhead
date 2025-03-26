@@ -371,13 +371,15 @@ def training_loop(
     
     # Load Classifier
     if experiment_config.model_config.classifier:
-        classifier_dir = pathlib.Path(GGHEAD_MODELS_PATH) / "classifier" / experiment_config.model_config.classifier
-        with open(classifier_dir / "args.json", "r") as f:
-            classifier_cfg = ClassifierConfig.from_json(json.load(f))
-        
-        classifier_weights = "checkpoints/" + experiment_config.train_setup.resume_run + "/checkpoint-" + str(experiment_config.train_setup.resume_checkpoint) + ".pth"
+        classifier_dir = pathlib.Path(run_dir) / "classifier" / experiment_config.model_config.classifier
+        if not do_resume or not os.path.exists(classifier_dir) or not os.path.isdir(classifier_dir) or not os.path.exists(classifier_dir / "args.json"):
+            classifier_dir = pathlib.Path(GGHEAD_MODELS_PATH) / "classifier" / experiment_config.model_config.classifier
+        classifier_weights = "checkpoints/checkpoint-" + str(experiment_config.train_setup.resume_checkpoint) + ".pth"
         if not do_resume or not os.path.exists(classifier_dir / classifier_weights):
             classifier_weights = "weights.pth"
+        
+        with open(classifier_dir / "args.json", "r") as f:
+            classifier_cfg = ClassifierConfig.from_json(json.load(f))
         
         C, C_name = load_classification_model(
             cfg=classifier_cfg,
@@ -439,11 +441,10 @@ def training_loop(
     if rank == 0:
         print('Setting up training phases...')
 
-    loss = GGHeadStyleGAN2Loss(device=device, G=G, D=D, augment_pipe=augment_pipe,
+    loss = GGHeadStyleGAN2Loss(device=device, G=G, D=D, C=C, augment_pipe=augment_pipe,
                                config=experiment_config.optimizer_config.loss_config,
                                logger_bundle=logger_bundle)
-    # loss = StyleGAN2Loss(device=device, G=G, D=D, augment_pipe=augment_pipe,
-    #                      **asdict(experiment_config.optimizer_config.loss_config))  # subclass of training.loss.Loss
+    
     phases = []
     generator_optimizer_config = experiment_config.optimizer_config.generator_optimizer_config
     discriminator_optimizer_config = experiment_config.optimizer_config.discriminator_optimizer_config
@@ -562,6 +563,8 @@ def training_loop(
             all_gen_c = torch.from_numpy(np.stack(all_gen_c)).pin_memory().to(device)
             all_gen_c = [phase_gen_c.split(batch_gpu) for phase_gen_c in all_gen_c.split(batch_size)]
 
+        print(list(zip(phases, all_gen_z, all_gen_c)))
+
         # Execute training phases.
         for phase, phase_gen_z, phase_gen_c in zip(phases, all_gen_z, all_gen_c):
             if batch_idx % phase.interval != 0:
@@ -577,7 +580,7 @@ def training_loop(
                     if "super_resolution" not in k:
                         p.requires_grad_(False)
 
-            if phase.name in ["Gmain", "Greg", "Gboth"]:  # who is Greg?
+            if phase.name in ["Gmain", "Gboth"]:#, "Greg"]:  # who is Greg?
                 phase.module.backbone.freeze_lower_layers(experiment_config.train_setup.freeze_g_mapping_layers, experiment_config.train_setup.freeze_g_synthesis_layers)
             if phase.name in ["Dreg", "Dboth"]: # "Dmain" also exists but is apparently not to be fucked with
                 #phase.module.freeze_lower_layers(experiment_config.train_setup.freeze_d)
@@ -741,6 +744,15 @@ def training_loop(
 
                 with open(snapshot_pkl, 'wb') as f:
                     pickle.dump(snapshot_data, f)
+                    
+                if not C is None and not classifier_cfg is None:
+                    classifier_dir = pathlib.Path(model_manager.get_model_store_path()) / "classifier" / model_config.classifier
+                    classifier_checkpoints_dir = classifier_dir / "checkpoints"
+                    os.makedirs(classifier_checkpoints_dir, exist_ok=True)
+                    with open(classifier_dir / "args.json", "w+") as f:
+                        json.dump(classifier_cfg.to_json(), f, indent=2)
+                    torch.save(C.state_dict(), classifier_checkpoints_dir / (checkpoint_name[:-3] + "pth"))
+                    
 
         # Evaluate metrics.
         metrics = experiment_config.train_setup.metrics
