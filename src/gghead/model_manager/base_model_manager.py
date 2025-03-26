@@ -73,9 +73,9 @@ GGHGeneratorType = Literal['gaussians', 'triplanes']
 @dataclass
 class GGHeadGANConfig(Config):
     generator_config: GGHeadConfig
-    # generator_config: TriPlaneGaussianGeneratorConfig
     discriminator_config: GaussianDiscriminatorConfig
     generator_type: GGHGeneratorType = 'gaussians'
+    
     static_attributes: Optional[list] = None
     classifier: Optional[str] = None
 

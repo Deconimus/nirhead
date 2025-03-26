@@ -108,6 +108,7 @@ class GGHeadStyleGAN2Loss(StyleGAN2Loss):
                  logger_bundle: LoggerBundle = LoggerBundle()) -> None:
         self._config = config
         self._logger_bundle = logger_bundle
+        self.C = C
         super().__init__(device, G, D, augment_pipe=augment_pipe,
                          r1_gamma=config.r1_gamma,
                          style_mixing_prob=config.style_mixing_prob,
@@ -126,6 +127,7 @@ class GGHeadStyleGAN2Loss(StyleGAN2Loss):
                          gpc_reg_prob=config.gpc_reg_prob,
                          dual_discrimination=config.dual_discrimination)
 
+
     def run_G(self, z, c, swapping_prob, neural_rendering_resolution, update_emas=False, **synthesis_kwargs):
         if swapping_prob is not None:
             c_swapped = torch.roll(c.clone(), 1, 0)
@@ -134,21 +136,13 @@ class GGHeadStyleGAN2Loss(StyleGAN2Loss):
             c_gen_conditioning = torch.zeros_like(c)
 
         ws = self.G.mapping(z, c_gen_conditioning, update_emas=update_emas)
-        if self.style_mixing_prob > 0:
-            with torch.autograd.profiler.record_function('style_mixing'):
-                cutoff = torch.empty([], dtype=torch.int64, device=ws.device).random_(1, ws.shape[1])
-                cutoff = torch.where(torch.rand([], device=ws.device) < self.style_mixing_prob, cutoff, torch.full_like(cutoff, ws.shape[1]))
-                ws[:, cutoff:] = self.G.mapping(torch.randn_like(z), c, update_emas=False)[:, cutoff:]
         gen_output = self.G.synthesis(ws, c, neural_rendering_resolution=neural_rendering_resolution, update_emas=update_emas, **synthesis_kwargs)
         return gen_output, ws
 
-    def run_D(self, img, c, blur_sigma=0, blur_sigma_raw=0, alpha_new_layers_disc: Optional[float] = None, update_emas=False,
-              effective_res_disc: Optional[int] = None, other_img: Optional[Dict[str, torch.Tensor]] = None):
-        blur_size = np.floor(blur_sigma * 3)
 
-        if self._config.mask_swap_prob > 0 and other_img is not None:
-            idx_self_other = torch.rand((img['image'].shape[0], 1, 1), device=img['image'].device) > self._config.mask_swap_prob
-            img['image'][:, 3] = torch.where(idx_self_other, img['image'][:, 3], other_img['image'][:, 3].detach())
+    def run_D(self, img, c, blur_sigma=0, blur_sigma_raw=0, alpha_new_layers_disc: Optional[float] = None, update_emas=False,
+              effective_res_disc: Optional[int] = None):
+        blur_size = np.floor(blur_sigma * 3)
 
         if blur_size > 0:
             with torch.autograd.profiler.record_function('blur'):
@@ -180,8 +174,17 @@ class GGHeadStyleGAN2Loss(StyleGAN2Loss):
             logits = self.D(img, c, update_emas=update_emas, alpha_new_layers=alpha_new_layers_disc)
         return logits
 
+
     def run_C(self, img, c, update_emas=False):
+        
+        if img.shape[2] != self.C.img_res or img.shape[3] != self.C.img_res:
+            img = torchvision.transforms.functional.resize(img, (self.C.img_res, self.C.img_res))
+        
+        self.C(img)
+        
+        
         pass
+
 
     def loss_clamp_l2(self, source, target, mask=None, clamp=True):
         """
@@ -204,6 +207,7 @@ class GGHeadStyleGAN2Loss(StyleGAN2Loss):
         else:
             return torch.mean(loss_map)
 
+
     def loss_clamp_l1(self, source, target_value, mask=None, clamp=False):
         """
         Args:
@@ -224,6 +228,7 @@ class GGHeadStyleGAN2Loss(StyleGAN2Loss):
             return torch.sum(loss_map * texture_mask[..., None]) / torch.sum(texture_mask)
         else:
             return torch.mean(loss_map)
+
 
     def accumulate_gradients(self, phase, real_img, real_c, gen_z, gen_c, gain, cur_nimg):
         assert phase in ['Gmain', 'Greg', 'Gboth', 'Dmain', 'Dreg', 'Dboth']
@@ -284,8 +289,7 @@ class GGHeadStyleGAN2Loss(StyleGAN2Loss):
                                                   alpha_plane_resolution=alpha_plane_resolution)
                 else:
                     gen_img, _gen_ws = self.run_G(gen_z, gen_c, swapping_prob=swapping_prob, neural_rendering_resolution=neural_rendering_resolution)
-                gen_logits = self.run_D(gen_img, gen_c, blur_sigma=blur_sigma, alpha_new_layers_disc=alpha_new_layers_disc, effective_res_disc=effective_res_disc,
-                                        other_img=real_img)
+                gen_logits = self.run_D(gen_img, gen_c, blur_sigma=blur_sigma, alpha_new_layers_disc=alpha_new_layers_disc, effective_res_disc=effective_res_disc)
                 
                 # TODO: How exactly is the Discriminator not also backpropagated here? And how is the Generator not backpropagated later in Discriminator phases?
                 # TODO: Run Classifier and add loss to loss_Gmain. Maybe also in D phases?
@@ -395,12 +399,12 @@ class GGHeadStyleGAN2Loss(StyleGAN2Loss):
                         }, step=cur_nimg)
                         loss_Gmain = loss_Gmain + self._config.lambda_tv_uv_rendering * reg_tv_uv_rendering
 
-
             with torch.autograd.profiler.record_function('Gmain_backward'):
                 loss_Gmain.mean().mul(gain).backward()
                 gradients_with_nan = [n for n, p in self.G.named_parameters() if p.grad is not None and p.grad.isnan().any()]
                 if len(gradients_with_nan) > 0:
                     print(f"loss_Gmain NAN GRADIENTS: {gradients_with_nan}")
+
 
         # Dmain: Minimize logits for generated images.
         loss_Dgen = 0
@@ -413,7 +417,7 @@ class GGHeadStyleGAN2Loss(StyleGAN2Loss):
                     gen_img, _gen_ws = self.run_G(gen_z, gen_c, swapping_prob=swapping_prob, neural_rendering_resolution=neural_rendering_resolution,
                                                   update_emas=True)
                 gen_logits = self.run_D(gen_img, gen_c, blur_sigma=blur_sigma, update_emas=True, alpha_new_layers_disc=alpha_new_layers_disc,
-                                        effective_res_disc=effective_res_disc, other_img=real_img)
+                                        effective_res_disc=effective_res_disc)
                 self._logger_bundle.log_metrics({
                     'Loss/scores/fake': gen_logits,
                     'Loss/signs/fake': gen_logits.sign()
@@ -429,6 +433,7 @@ class GGHeadStyleGAN2Loss(StyleGAN2Loss):
                 if len(gradients_with_nan) > 0:
                     print(f"loss_Dgen NAN GRADIENTS: {gradients_with_nan}")
 
+
         # Dmain: Maximize logits for real images.
         # Dr1: Apply R1 regularization.
         if phase in ['Dmain', 'Dreg', 'Dboth']:
@@ -438,8 +443,7 @@ class GGHeadStyleGAN2Loss(StyleGAN2Loss):
                 real_img_tmp_image_raw = real_img['image_raw'].detach().requires_grad_(phase in ['Dreg', 'Dboth'])
                 real_img_tmp = {'image': real_img_tmp_image, 'image_raw': real_img_tmp_image_raw}
 
-                real_logits = self.run_D(real_img_tmp, real_c, blur_sigma=blur_sigma, alpha_new_layers_disc=alpha_new_layers_disc, effective_res_disc=effective_res_disc,
-                                         other_img=gen_img)
+                real_logits = self.run_D(real_img_tmp, real_c, blur_sigma=blur_sigma, alpha_new_layers_disc=alpha_new_layers_disc, effective_res_disc=effective_res_disc)
                 self._logger_bundle.log_metrics({
                     'Loss/scores/real': real_logits,
                     'Loss/signs/real': real_logits.sign()

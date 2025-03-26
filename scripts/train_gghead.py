@@ -514,6 +514,8 @@ def main(
             static_attributes=static_attributes,
             classifier=classifier,
         )
+        
+        print(model_config.generator_config.c_dim)
 
         # ----------------------------------------------------------
         # Optimizer config
@@ -537,7 +539,6 @@ def main(
             template_offsets_gradient_accumulation=template_offsets_gradient_accumulation,
             loss_config=GGHeadStyleGAN2LossConfig(
                 r1_gamma=gamma,
-                style_mixing_prob=opts.style_mixing_prob,
                 neural_rendering_resolution_initial=opts.neural_rendering_resolution_initial,
                 neural_rendering_resolution_final=opts.neural_rendering_resolution_final,
                 neural_rendering_resolution_fade_kimg=opts.neural_rendering_resolution_fade_kimg,
