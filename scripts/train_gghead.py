@@ -219,6 +219,7 @@ def main(
 
         if static_attributes is not None:
             model_config.static_attributes = static_attributes
+            dataset_config.static_attributes = static_attributes
         if classifier is not None:
             model_config.classifier = classifier
 
@@ -386,7 +387,9 @@ def main(
             apply_masks=apply_masks,
             random_background=random_background,
             background_color=background_color,
-            return_background=return_background)
+            return_background=return_background,
+            static_attributes=static_attributes,
+        )
         proxy_dataset = GGHeadMaskImageFolderDataset(dataset_config)
         dataset_config.max_size = len(proxy_dataset)
 

@@ -238,7 +238,7 @@ class GGHeadStyleGAN2Loss(StyleGAN2Loss):
             return torch.mean(loss_map)
 
 
-    def accumulate_gradients(self, phase, real_img, real_c, gen_z, gen_c, gain, cur_nimg):
+    def accumulate_gradients(self, phase, real_img, real_c, real_attr, gen_z, gen_c, gen_attr, gain, cur_nimg):
         assert phase in ['Gmain', 'Greg', 'Gboth', 'Dmain', 'Dreg', 'Dboth']
         if not hasattr(self.G, 'rendering_kwargs') or not isinstance(self.G.rendering_kwargs, dict) or self.G.rendering_kwargs.get('density_reg', 0) == 0:
             phase = {'Greg': 'none', 'Gboth': 'Gmain'}.get(phase, phase)
@@ -406,7 +406,7 @@ class GGHeadStyleGAN2Loss(StyleGAN2Loss):
                         
                     if self._config.lambda_classifier_loss > 0 and self.C and len(self.static_attributes) > 0:
                         attr_pred = self.run_C(gen_img.images)
-                        attr_gt = torch.ones_like(attr_pred, device=attr_pred.device)
+                        attr_gt = torch.ones_like(attr_pred, device=attr_pred.device) # TODO: replace by gen_attr
                         classifier_loss = torch.nn.functional.binary_cross_entropy_with_logits(attr_pred, attr_gt)
                         self._logger_bundle.log_metrics({
                             'Loss/G/classifier_loss': classifier_loss

@@ -43,7 +43,7 @@ def make_crop_module(img_res: int, crop, identity=True):
 class Classifier(nn.Module):
     
     def __init__(self, img_res: int, img_ch: int, label_classes: list, crop=(0,0)):
-        super().__init__()
+        super(Classifier, self).__init__()
         self.img_res = img_res
         self.img_ch = img_ch
         self.label_classes = [l.lower().strip() for l in label_classes]
@@ -65,7 +65,7 @@ class Classifier(nn.Module):
 class TinyVGG(Classifier):
 
     def __init__(self, img_res: int, input_channel: int, hidden_units: int, label_classes: list, crop=(0,0)):
-        super().__init__(img_res, input_channel, label_classes, crop)
+        super(TinyVGG, self).__init__(img_res, input_channel, label_classes, crop)
 
         blocks = []
         blocks.append(make_crop_module(img_res, crop))

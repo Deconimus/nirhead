@@ -581,18 +581,32 @@ def training_loop(
         
         # Fetch training data.
         with torch.autograd.profiler.record_function('data_fetch'):
-            phase_real_img, phase_real_c = next(training_set_iterator)
+            phase_real_img, phase_real_c, phase_real_attr = next(training_set_iterator)
             phase_real_img = (phase_real_img.to(device).to(torch.float32) / 127.5 - 1).split(batch_gpu)
             phase_real_c = phase_real_c.to(device).split(batch_gpu)
+            if training_set._has_static_attributes():
+                phase_real_attr = phase_real_attr.to(device).split(batch_gpu)
+            else:
+                phase_real_attr = [None] * len(phase_real_c)
+            
             all_gen_z = torch.randn([len(phases) * batch_size, G.z_dim], device=device)
             all_gen_z = [phase_gen_z.split(batch_gpu) for phase_gen_z in all_gen_z.split(batch_size)]
-            all_gen_c = [training_set.get_label(np.random.randint(len(training_set))) for _ in
-                         range(len(phases) * batch_size)]
+            
+            all_gen_c = [training_set.get_label(np.random.randint(len(training_set))) for _ in range(len(phases) * batch_size)]
             all_gen_c = torch.from_numpy(np.stack(all_gen_c)).pin_memory().to(device)
             all_gen_c = [phase_gen_c.split(batch_gpu) for phase_gen_c in all_gen_c.split(batch_size)]
+            
+            all_gen_attr = None
+            if training_set._has_static_attributes():
+                # TODO: this will need to be refactored, if we add non-binary attributes
+                all_gen_attr = torch.rand([len(phases) * batch_size, len(training_set._config.static_attributes)], dtype=torch.float32) >= 0.5
+                all_gen_attr = all_gen_attr.to(device)
+                all_gen_attr = [phase_gen_attr.split(batch_gpu) for phase_gen_attr in all_gen_attr.split(batch_size)]
+            else:
+                all_gen_attr = [([None] * len(phase_real_c)) for _ in all_gen_c]
         
         # Execute training phases.
-        for phase, phase_gen_z, phase_gen_c in zip(phases, all_gen_z, all_gen_c):
+        for phase, phase_gen_z, phase_gen_c, phase_gen_attr in zip(phases, all_gen_z, all_gen_c, all_gen_attr):
             if batch_idx % phase.interval != 0:
                 continue
             if phase.start_event is not None:
@@ -615,8 +629,8 @@ def training_loop(
                 # phase.module.check_freeze_lower_layers(50)
                 pass
             
-            for real_img, real_c, gen_z, gen_c in zip(phase_real_img, phase_real_c, phase_gen_z, phase_gen_c):
-                loss.accumulate_gradients(phase=phase.name, real_img=real_img, real_c=real_c, gen_z=gen_z, gen_c=gen_c,
+            for real_img, real_c, real_attr, gen_z, gen_c, gen_attr in zip(phase_real_img, phase_real_c, phase_real_attr, phase_gen_z, phase_gen_c, phase_gen_attr):
+                loss.accumulate_gradients(phase=phase.name, real_img=real_img, real_c=real_c, real_attr=real_attr, gen_z=gen_z, gen_c=gen_c, gen_attr=gen_attr,
                                           gain=phase.interval, cur_nimg=cur_nimg)
             
             phase.module.requires_grad_(False)

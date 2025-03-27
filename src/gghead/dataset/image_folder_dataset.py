@@ -27,11 +27,14 @@ class GGHeadImageFolderDatasetConfig(Config):
     random_background: bool = False  # If true, background will be a random, solid color
     background_color: Tuple[int, int, int] = (255, 255, 255)  # Background color to use when apply_masks=True
     filter_ffhq: bool = False
-
+    
     max_size: Optional[int] = None  # Artificially limit the size of the dataset. None = no limit. Applied before xflip.
     use_labels: bool = False  # Enable conditioning labels? False = label dimension is zero.
     xflip: bool = False  # Artificially double the size of the dataset via x-flips. Applied after max_size.
     random_seed: int = 0  # Random seed to use when applying max_size.
+    
+    static_attributes: Optional[list] = None  # NIRHead static_attribute labels
+    
 
     def get_eg3d_name(self) -> str:
         return os.path.splitext(os.path.basename(self.path))[0]
@@ -59,6 +62,7 @@ class GGHeadImageFolderDataset(Dataset):
         self._zipfile = None
         self._use_calibration = config.use_calibration
         self._config = config
+        self._static_attribute_labels = None
 
         if os.path.isdir(self._path):
             self._type = 'dir'
@@ -174,7 +178,37 @@ class GGHeadImageFolderDataset(Dataset):
         labels = np.array(labels)
         labels = labels.astype({1: np.int64, 2: np.float32}[labels.ndim])
         return labels
-
+    
+    def __getitem__(self, idx):
+        img, l = super(GGHeadImageFolderDataset, self).__getitem__(idx)
+        return img, l, self._get_static_attribute_label(idx)
+    
+    def _load_static_attribute_labels(self):
+        if self._static_attribute_labels:
+            return self._static_attribute_labels
+        if not self._config.static_attributes:
+            return None
+        fname = "labels.json"
+        if not fname in self._all_fnames:
+            return None
+        with self._open_file(fname) as f:
+            self._static_attribute_labels = json.load(f)
+        return self._static_attribute_labels
+    
+    def _get_static_attribute_label(self, idx):
+        if not self._config.static_attributes:
+            return np.zeros((1,), dtype=np.float32)
+        if not self._load_static_attribute_labels():
+            return np.zeros((1,), dtype=np.float32)
+        
+        raw_idx = int(self._raw_idx[idx])
+        img_fname = self._image_fnames[raw_idx]
+        
+        return self._load_static_attribute_labels()[img_fname]
+    
+    def _has_static_attributes(self):
+        return self._load_static_attribute_labels() is not None
+    
 
 class GGHeadMaskImageFolderDataset(Dataset):
     def __init__(self, config: GGHeadImageFolderDatasetConfig):
@@ -242,3 +276,5 @@ class GGHeadMaskImageFolderDataset(Dataset):
     def _load_raw_labels(self):
         return self._dataset_images._load_raw_labels()
 
+    def _has_static_attributes(self):
+        return self._dataset_images._has_static_attributes()
