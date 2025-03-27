@@ -227,6 +227,10 @@ def training_loop(
     training_set_iterator = iter(
         DataLoader(dataset=training_set, sampler=training_set_sampler, batch_size=batch_size // num_gpus,
                    **data_loader_kwargs))
+    
+    if dataset_config.static_attributes:
+        assert(training_set._has_static_attributes())
+    
     if rank == 0:
         print()
         print('Num images: ', len(training_set))

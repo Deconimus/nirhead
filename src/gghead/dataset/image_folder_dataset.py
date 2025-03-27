@@ -207,7 +207,9 @@ class GGHeadImageFolderDataset(Dataset):
         return self._load_static_attribute_labels()[img_fname]
     
     def _has_static_attributes(self):
-        return self._load_static_attribute_labels() is not None
+        v = self._load_static_attribute_labels() is not None
+        assert(v or (self._config.static_attributes is None)) # check (static_attributes implies _has_static_attributes)
+        return v
     
 
 class GGHeadMaskImageFolderDataset(Dataset):
