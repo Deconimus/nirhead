@@ -3,6 +3,7 @@ from typing import Optional, Literal, Dict
 
 import numpy as np
 import torch
+import torchvision.transforms.functional
 from eg3d.torch_utils import training_stats
 from eg3d.torch_utils.ops import conv2d_gradfix
 from eg3d.torch_utils.ops import upfirdn2d
@@ -71,6 +72,7 @@ class GGHeadStyleGAN2LossConfig(Config):
     lambda_tv_uv_rendering: float = 0
     tv_uv_include_transparent_gaussians: bool = False  # Whether, to apply the UV TV loss on a UV rendering that also includes transparent gaussians
     lambda_beta_loss: float = 0
+    lambda_classifier_loss: float = 0
 
     pretrained_resolution: Optional[int] = implicit()
 
@@ -103,12 +105,14 @@ class GGHeadStyleGAN2Loss(StyleGAN2Loss):
                  G,
                  D,
                  C,
+                 static_attributes=None,
                  augment_pipe=None,
                  config: GGHeadStyleGAN2LossConfig = GGHeadStyleGAN2LossConfig(),
                  logger_bundle: LoggerBundle = LoggerBundle()) -> None:
         self._config = config
         self._logger_bundle = logger_bundle
         self.C = C
+        self.static_attributes = static_attributes
         super().__init__(device, G, D, augment_pipe=augment_pipe,
                          r1_gamma=config.r1_gamma,
                          style_mixing_prob=config.style_mixing_prob,
@@ -175,15 +179,19 @@ class GGHeadStyleGAN2Loss(StyleGAN2Loss):
         return logits
 
 
-    def run_C(self, img, c, update_emas=False):
-        
+    def run_C(self, img, update_emas=False):
         if img.shape[2] != self.C.img_res or img.shape[3] != self.C.img_res:
             img = torchvision.transforms.functional.resize(img, (self.C.img_res, self.C.img_res))
+        if img.shape[1] != self.C.img_ch:
+            if img.shape[1] == 3 and self.C.img_ch == 1:
+                img = torchvision.transforms.functional.rgb_to_grayscale(img, num_output_channels=1)
+            elif img.shape[1] == 1 and self.C.img_ch == 3:
+                img = img.repeat(repeats=(1,3,1,1))
         
-        self.C(img)
+        y = self.C(img)
+        y = self.C.get_labels_tensor(y, self.static_attributes) # filter labels, as the Classifier might have more inherent labels than just our static_attributes
         
-        
-        pass
+        return y
 
 
     def loss_clamp_l2(self, source, target, mask=None, clamp=True):
@@ -291,9 +299,6 @@ class GGHeadStyleGAN2Loss(StyleGAN2Loss):
                     gen_img, _gen_ws = self.run_G(gen_z, gen_c, swapping_prob=swapping_prob, neural_rendering_resolution=neural_rendering_resolution)
                 gen_logits = self.run_D(gen_img, gen_c, blur_sigma=blur_sigma, alpha_new_layers_disc=alpha_new_layers_disc, effective_res_disc=effective_res_disc)
                 
-                # TODO: How exactly is the Discriminator not also backpropagated here? And how is the Generator not backpropagated later in Discriminator phases?
-                # TODO: Run Classifier and add loss to loss_Gmain. Maybe also in D phases?
-                
                 loss_Gmain = torch.nn.functional.softplus(-gen_logits)
                 
                 if loss_Gmain.isnan().any():
@@ -398,6 +403,17 @@ class GGHeadStyleGAN2Loss(StyleGAN2Loss):
                             'Loss/G/reg_tv_uv_rendering': reg_tv_uv_rendering
                         }, step=cur_nimg)
                         loss_Gmain = loss_Gmain + self._config.lambda_tv_uv_rendering * reg_tv_uv_rendering
+                        
+                    if self._config.lambda_classifier_loss > 0 and self.C and len(self.static_attributes) > 0:
+                        attr_pred = self.run_C(gen_img.images)
+                        attr_gt = torch.ones_like(attr_pred, device=attr_pred.device)
+                        classifier_loss = torch.nn.functional.binary_cross_entropy_with_logits(attr_pred, attr_gt)
+                        self._logger_bundle.log_metrics({
+                            'Loss/G/classifier_loss': classifier_loss
+                        }, step=cur_nimg)
+                        loss_Gmain = loss_Gmain + self._config.lambda_classifier_loss * classifier_loss
+                        
+                        # TODO: Maybe also run Classifier in Discriminator phases?
 
             with torch.autograd.profiler.record_function('Gmain_backward'):
                 loss_Gmain.mean().mul(gain).backward()

@@ -40,11 +40,32 @@ def make_crop_module(img_res: int, crop, identity=True):
     return nn.Identity() if identity else None
 
 
-class TinyVGG(nn.Module):
-
-    def __init__(self, img_res: int, input_channel: int, hidden_units: int, num_classes: int, crop=(0,0)):
+class Classifier(nn.Module):
+    
+    def __init__(self, img_res: int, img_ch: int, label_classes: list, crop=(0,0)):
         super().__init__()
         self.img_res = img_res
+        self.img_ch = img_ch
+        self.label_classes = [l.lower().strip() for l in label_classes]
+        self.num_classes = len(label_classes)
+        
+        self.crop = (crop, crop) if not isinstance(crop, tuple) else crop
+        crop_y = img_res if self.crop[0] <= 0 else self.crop[0]
+        crop_x = img_res if self.crop[1] <= 0 else self.crop[1]
+        self.crop = (crop_y, crop_x)
+        
+    def get_labels_tensor(self, label_tensor, label_classes):
+        label_indices = [self.label_classes.index(l.lower().strip()) for l in label_classes]
+        assert(len(label_indices) == len(label_classes))
+        idx = torch.tensor(label_indices, device=label_tensor.device)
+        idx = idx.reshape((1,-1)).repeat((label_tensor.shape[0], 1))
+        return torch.take_along_dim(label_tensor, idx, dim=1)
+
+
+class TinyVGG(Classifier):
+
+    def __init__(self, img_res: int, input_channel: int, hidden_units: int, label_classes: list, crop=(0,0)):
+        super().__init__(img_res, input_channel, label_classes, crop)
 
         blocks = []
         blocks.append(make_crop_module(img_res, crop))
@@ -75,7 +96,7 @@ class TinyVGG(nn.Module):
 
         self.classifier = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(in_features=hidden_units**2 * self.img_res, out_features=num_classes)
+            nn.Linear(in_features=hidden_units**2 * self.img_res, out_features=self.num_classes)
         )
 
     def forward(self, x: torch.Tensor):
@@ -127,13 +148,10 @@ class ResNetBlock(nn.Module):
         return x
 
 
-class ResNet(nn.Module):
+class ResNet(Classifier):
 
-    def __init__(self, img_res: int, img_ch: int, num_classes: int, crop=(0, 0), ch_base=32, epilogue=False):
-        super(ResNet, self).__init__()
-        self.img_res = img_res
-        self.img_ch = img_ch
-        self.num_classes = num_classes
+    def __init__(self, img_res: int, img_ch: int, label_classes: list, crop=(0, 0), ch_base=32, epilogue=False):
+        super(ResNet, self).__init__(img_res, img_ch, label_classes, crop)
         self.ch_base = ch_base
         self.epilogue = epilogue
 
@@ -169,23 +187,20 @@ class ResNet(nn.Module):
         return x
 
 
-class VIT(nn.Module):
+class VIT(Classifier):
 
-    def __init__(self, img_res: int, img_ch: int, num_classes: int, crop=(0, 0), patch_size=16, depth=6, heads=16, mlp_dim=1024, dim=None):
-        super(VIT, self).__init__()
-        self.img_res = img_res
-        self.img_ch = img_ch
-        self.num_classes = num_classes
+    def __init__(self, img_res: int, img_ch: int, label_classes: list, crop=(0, 0), patch_size=16, depth=6, heads=16, mlp_dim=1024, dim=None):
+        super(VIT, self).__init__(img_res, img_ch, label_classes, crop)
         self.patch_size = patch_size
         self.depth = depth
         self.heads = heads
         self.mlp_dim = mlp_dim
         self.dim = dim
 
-        self.crop = make_crop_module(img_res, crop)
+        self.crop = make_crop_module(self.img_res, self.crop)
         self.vit = SimpleViT(
             image_size = self.img_res,
-            channels=self.img_ch,
+            channels = self.img_ch,
             patch_size = self.patch_size,
             num_classes = self.num_classes,
             dim = self.dim if self.dim else self.mlp_dim//2, #1024,
@@ -206,11 +221,11 @@ def load_classification_model(cfg: ClassifierConfig, device: str, weights_file=N
     name = ""
     
     if cfg.model.lower() == "resnet":
-        model = ResNet(img_res=cfg.img_res, img_ch=1, num_classes=len(cfg.labels), crop=(cfg.crop_h, 0), ch_base=cfg.ch_base, epilogue=cfg.epilogue).to(device)
+        model = ResNet(img_res=cfg.img_res, img_ch=1, label_classes=cfg.labels, crop=(cfg.crop_h, 0), ch_base=cfg.ch_base, epilogue=cfg.epilogue).to(device)
         name = "resnet_chbase" + str(cfg.ch_base) + ("_epilogue" if cfg.epilogue else "") + (f"_croph{cfg.crop_h}" if cfg.crop_h else "")  + "_" + str(int(time.time()))
         
     elif cfg.model.lower() == "tvgg" or cfg.model.lower() == "tinyvgg":
-        model = TinyVGG(img_res=cfg.img_res, input_channel=1, hidden_units=cfg.ch_base, num_classes=len(cfg.labels), crop=(cfg.crop_h, 0)).to(device)
+        model = TinyVGG(img_res=cfg.img_res, input_channel=1, hidden_units=cfg.ch_base, label_classes=cfg.labels, crop=(cfg.crop_h, 0)).to(device)
         name = "tinyvgg_units" + str(cfg.ch_base) + (f"_croph{cfg.crop_h}" if cfg.crop_h else "")  + "_" + str(int(time.time()))
         
     elif cfg.model.lower() == "vit" or cfg.model.lower() == "simplevit":
@@ -219,7 +234,7 @@ def load_classification_model(cfg: ClassifierConfig, device: str, weights_file=N
         heads = cfg.vit_heads if cfg.vit_heads else 8
         depth = cfg.vit_depth if cfg.vit_depth else 4
         
-        model = VIT(img_res=cfg.img_res, img_ch=1, num_classes=len(cfg.labels), crop=(cfg.crop_h, 0), patch_size=cfg.patch_size, mlp_dim=mlp_dim, dim=dim, heads=heads, depth=depth).to(device)
+        model = VIT(img_res=cfg.img_res, img_ch=1, label_classes=cfg.labels, crop=(cfg.crop_h, 0), patch_size=cfg.patch_size, mlp_dim=mlp_dim, dim=dim, heads=heads, depth=depth).to(device)
         name = f"simplevit{cfg.patch_size}_mlpdim{mlp_dim}" + (f"_dim{dim}" if dim else "") + f"_heads{heads}_depth{depth}" + (f"_croph{cfg.crop_h}" if cfg.crop_h else "") + "_" + str(int(time.time()))
         
     if weights_file:

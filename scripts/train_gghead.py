@@ -1,8 +1,6 @@
-import os, gc
+import os, gc, pathlib, tyro
 from typing import Optional, Tuple, Literal
-
 import torch
-import tyro
 from eg3d import dnnlib
 from eg3d.metrics import metric_main
 from eg3d.metrics.metric_main import register_metric
@@ -124,8 +122,10 @@ def main(
         lambda_beta_loss: float = 0,
         use_l1_scale_reg: bool = False,
         lambda_raw_scale_std: float = 0,
+        lambda_classifier: float = 0,
 
         # Resuming
+        overwrite_lambda_classifier: Optional[float] = None,
         overwrite_n_subdivisions: Optional[int] = None,
         overwrite_n_uniform_flame_vertices: Optional[int] = None,
         overwrite_grad_multiplier_position: Optional[float] = None,
@@ -220,7 +220,7 @@ def main(
         if static_attributes is not None:
             model_config.static_attributes = static_attributes
         if classifier is not None:
-            model_config.static_attributes = classifier
+            model_config.classifier = classifier
 
         if overwrite_n_subdivisions is not None:
             model_config.generator_config.n_flame_subdivisions = overwrite_n_subdivisions
@@ -260,6 +260,9 @@ def main(
 
         if overwrite_tv_uv_include_transparent_gaussians is not None:
             optimizer_config.loss_config.tv_uv_include_transparent_gaussians = overwrite_tv_uv_include_transparent_gaussians
+            
+        if overwrite_lambda_classifier is not None:
+            optimizer_config.loss_config.lambda_classifier_loss = overwrite_lambda_classifier
 
         if overwrite_resolution is not None:
             pretrained_resolution = model_config.discriminator_config.img_resolution if model_config.discriminator_config.pretrained_resolution is None else model_config.discriminator_config.pretrained_resolution
@@ -565,6 +568,7 @@ def main(
                 lambda_tv_uv_rendering=lambda_tv_uv_rendering,
                 tv_uv_include_transparent_gaussians=tv_uv_include_transparent_gaussians,
                 lambda_beta_loss=lambda_beta_loss,
+                lambda_classifier_loss=lambda_classifier,
 
                 reg_gaussian_position_above=0.1,
                 reg_gaussian_position_below=-0.1,

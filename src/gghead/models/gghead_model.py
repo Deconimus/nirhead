@@ -816,7 +816,7 @@ class GGHeadModel(nn.Module):
         gaussian_rotations = gaussian_attributes[GaussianAttribute.ROTATION]
         gaussian_opacities = gaussian_attributes[GaussianAttribute.OPACITY]
         gaussian_colors = gaussian_attributes[GaussianAttribute.COLOR]  # [B, G, SH*3]
-        B = len(c)
+        B = len(c) # Batch_Size
         G = gaussian_colors.shape[1]
         C = 3
         gaussian_colors = gaussian_colors.view(B, G, -1, C)

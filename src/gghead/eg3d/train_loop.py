@@ -1,19 +1,12 @@
-import copy
-import json
-import os
-import pickle
-import re
-import sys
-import time
+import copy, json, os, pickle, re, sys, time, psutil, pathlib
+import torch, torchsummary
+import numpy as np
 from dataclasses import asdict, is_dataclass, replace
 from datetime import timedelta
 from itertools import chain
 from tempfile import TemporaryDirectory
 from typing import Optional
 
-import numpy as np
-import psutil
-import torch
 from dreifus.util.visualizer import ImageWindow
 from eg3d import legacy, dnnlib
 from eg3d.dnnlib import EasyDict
@@ -387,25 +380,29 @@ def training_loop(
     D.freeze_lower_layers(experiment_config.train_setup.freeze_d, console_out=True)
     
     # Load Classifier
-    C, C_name = None, None
-    if experiment_config.model_config.classifier:
-        classifier_dir = pathlib.Path(run_dir) / "classifier" / experiment_config.model_config.classifier
+    C, C_name, classifier_cfg = None, None, None
+    if model_config.classifier:
+        classifier_dir = pathlib.Path(run_dir) / "classifier" / model_config.classifier
         if not do_resume or not os.path.exists(classifier_dir) or not os.path.isdir(
                 classifier_dir) or not os.path.exists(classifier_dir / "args.json"):
-            classifier_dir = pathlib.Path(GGHEAD_MODELS_PATH) / "classifier" / experiment_config.model_config.classifier
+            classifier_dir = pathlib.Path(GGHEAD_MODELS_PATH) / "classifier" / model_config.classifier
         classifier_weights = "checkpoints/checkpoint-" + str(experiment_config.train_setup.resume_checkpoint) + ".pth"
         if not do_resume or not os.path.exists(classifier_dir / classifier_weights):
             classifier_weights = "weights.pth"
         
         with open(classifier_dir / "args.json", "r") as f:
             classifier_cfg = ClassifierConfig.from_json(json.load(f))
+            assert(all([(attr.lower().strip() in classifier_cfg.labels) for attr in model_config.static_attributes])) # check if classifier has all labels we need
         
         C, C_name = load_classification_model(
             cfg=classifier_cfg,
             weights_file=classifier_dir / classifier_weights,
             device=device,
         )
+        C.requires_grad_(False)
         print(f"Loaded classifier {C_name} with weights from \"{classifier_dir / classifier_weights}\".")
+        torchsummary.summary(C, input_size=(C.img_ch, C.img_res, C.img_res))
+        #print_module_summary(C, torch.empty([batch_gpu, 1, C.img_res, C.img_res], device=device))
     
     # ----------------------------------------------------------
     # Print network summary tables
@@ -466,9 +463,13 @@ def training_loop(
     if rank == 0:
         print('Setting up training phases...')
     
-    loss = GGHeadStyleGAN2Loss(device=device, G=G, D=D, C=C, augment_pipe=augment_pipe,
+    loss = GGHeadStyleGAN2Loss(device=device, G=G, D=D, C=C,
+                               static_attributes=model_config.static_attributes,
+                               augment_pipe=augment_pipe,
                                config=experiment_config.optimizer_config.loss_config,
                                logger_bundle=logger_bundle)
+    
+    # TODO: Add training phase for Classifier, if classifier is to be trained after N ticks
     
     phases = []
     generator_optimizer_config = experiment_config.optimizer_config.generator_optimizer_config
@@ -599,7 +600,8 @@ def training_loop(
             
             # Accumulate gradients.
             phase.opt.zero_grad(set_to_none=True)
-            phase.module.requires_grad_(True)  # wtf?
+            phase.module.requires_grad_(True) # activate backprop for this model only, as per phase
+            
             if experiment_config.optimizer_config.freeze_generator and phase.name in ['Gmain', 'Gboth']:
                 for k, p in phase.module.named_parameters():
                     if "super_resolution" not in k:
