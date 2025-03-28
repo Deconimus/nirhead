@@ -364,6 +364,10 @@ def training_loop(
         copy_params(G_ema_loaded, G_ema, require_all=False)
         copy_params(D_loaded, D, require_all=False)
         
+        if experiment_config.train_setup.static_attributes_changed:
+            G.reset_attr_parameters()
+            G_ema.reset_attr_parameters()
+        
         resume_kimg = checkpoint
         
         if not experiment_config.train_setup.reset_cur_nimg:
@@ -429,7 +433,8 @@ def training_loop(
                 c = torch.empty([batch_gpu, G.c_dim], device=device)
         else:
             c = torch.empty([batch_gpu, G.c_dim], device=device)
-        img = print_module_summary(G, [z, c])
+        attr = torch.empty([batch_gpu, len(model_config.static_attributes)], device=device) if model_config.static_attributes else None
+        img = print_module_summary(G, [z, c, attr])
         print_module_summary(D, [img, c])
     
     # ----------------------------------------------------------
@@ -522,6 +527,7 @@ def training_loop(
         save_image_grid(images, os.path.join(run_dir, 'reals.png'), drange=[0, 255], grid_size=grid_size)
         grid_z = torch.randn([labels.shape[0], G.z_dim], device=device).split(batch_gpu)
         grid_c = torch.from_numpy(labels).to(device).split(batch_gpu)
+        grid_attr = (torch.rand([labels.shape[0], len(training_set._config.static_attributes)], dtype=torch.float32) + 0.5).int().float().to(device).split(batch_gpu)
     
     # Initialize logs.
     if rank == 0:
@@ -579,6 +585,9 @@ def training_loop(
     profiler = torch.autograd.profiler.profile(with_stack=True, profile_memory=True)
     profile_batch_idx = 10
     
+    assert(training_set._has_static_attributes() or not training_set._config.static_attributes)
+    assert(training_set._config.static_attributes == model_config.static_attributes)
+    
     while True:
         if batch_idx == profile_batch_idx:
             profiler.__enter__()
@@ -588,6 +597,8 @@ def training_loop(
             phase_real_img, phase_real_c, phase_real_attr = next(training_set_iterator)
             phase_real_img = (phase_real_img.to(device).to(torch.float32) / 127.5 - 1).split(batch_gpu)
             phase_real_c = phase_real_c.to(device).split(batch_gpu)
+            
+            # TODO: we actually don't need phase_real_attr right now, since we don't use it for the discriminator and are not yet training the classifier
             if training_set._has_static_attributes():
                 phase_real_attr = phase_real_attr.to(device).split(batch_gpu)
             else:
@@ -602,8 +613,8 @@ def training_loop(
             
             all_gen_attr = None
             if training_set._has_static_attributes():
-                # TODO: this will need to be refactored, if we add non-binary attributes
-                all_gen_attr = torch.rand([len(phases) * batch_size, len(training_set._config.static_attributes)], dtype=torch.float32) >= 0.5
+                # TODO: this will need to be refactored, once we add non-binary attributes
+                all_gen_attr = (torch.rand([len(phases) * batch_size, len(training_set._config.static_attributes)], dtype=torch.float32) + 0.5).int().float()
                 all_gen_attr = all_gen_attr.to(device)
                 all_gen_attr = [phase_gen_attr.split(batch_gpu) for phase_gen_attr in all_gen_attr.split(batch_size)]
             else:
@@ -758,7 +769,7 @@ def training_loop(
         # Save image snapshot.
         if (rank == 0) and (image_snapshot_ticks is not None) and (done or cur_tick % image_snapshot_ticks == 0):
             with torch.no_grad():
-                out = [G_ema(z=z, c=c, noise_mode='const') for z, c in zip(grid_z, grid_c)]
+                out = [G_ema(z=z, c=c, attr=attr, noise_mode='const') for z, c, attr in zip(grid_z, grid_c, grid_attr)]
                 images = torch.cat([o['image'].cpu() for o in out]).numpy()
                 images_raw = torch.cat([o['image_raw'].cpu() for o in out]).numpy()
                 images_depth = -torch.cat([o['image_depth'].cpu() for o in out]).numpy()

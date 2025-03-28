@@ -209,7 +209,9 @@ def main(
     c.G_kwargs = dnnlib.EasyDict()
     c.data_loader_kwargs = dnnlib.EasyDict(pin_memory=True, prefetch_factor=2)
     use_dual_discrimination = use_dual_discrimination and (generator_type == 'triplanes' and resolution != neural_rendering_resolution or use_superresolution)
-
+    
+    static_attributes_changed = False
+    
     if resume_run is not None:
         model_manager = find_model_manager(resume_run)
         dataset_config: GGHeadImageFolderDatasetConfig = model_manager.load_dataset_config()
@@ -218,7 +220,9 @@ def main(
         resume_checkpoint = model_manager._resolve_checkpoint_id(resume_checkpoint)
 
         if static_attributes is not None:
+            static_attributes_changed = model_config.static_attributes != static_attributes
             model_config.static_attributes = static_attributes
+            model_config.generator_config.static_attributes = static_attributes
             dataset_config.static_attributes = static_attributes
         if classifier is not None:
             model_config.classifier = classifier
@@ -488,6 +492,7 @@ def main(
             generator_config.random_background = random_background
             generator_config.return_background = return_background
             generator_config.background_color = background_color
+            generator_config.static_attributes = static_attributes
 
         discriminator_config = GaussianDiscriminatorConfig(
             channel_base=opts.cbase,
@@ -609,7 +614,8 @@ def main(
         freeze_d=freeze_d_layers,
         freeze_g_mapping_layers=freeze_g_mapping_layers,
         freeze_g_synthesis_layers=freeze_g_synthesis_layers,
-        train_classifier_after_epochs=train_classifier_after_epochs
+        train_classifier_after_epochs=train_classifier_after_epochs,
+        static_attributes_changed=static_attributes_changed,
     )
 
     # Hyperparameters & settings.

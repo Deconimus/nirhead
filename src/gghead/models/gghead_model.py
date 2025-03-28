@@ -197,6 +197,8 @@ class GGHeadConfig(Config):
     use_masks: bool = False
     fix_alpha_blending: bool = False
     use_cnn_adaptor: bool = False
+    
+    static_attributes: Optional[list] = None
 
     # Maintenance
     maintenance_interval: Optional[int] = None  # How often Gaussians should be densified / pruned
@@ -371,18 +373,29 @@ class GGHeadModel(nn.Module):
         self.z_dim = config.z_dim
         self.c_dim = config.c_dim
         self.w_dim = config.w_dim
+        
+        self.attr_embed = None
+        self.attr_condition = None
+        if self._config.static_attributes:
+            self.attr_embed = nn.Linear(len(self._config.static_attributes), self.z_dim)
+            self.attr_condition = nn.Linear(self.z_dim*2, self.z_dim)
+            #self.attr_condition = nn.Bilinear(self.z_dim, self.z_dim, self.z_dim)
+            #self.attr_condition = nn.Sequential(
+            #   nn.Linear(self.w_dim * 2, self.w_dim),
+            #   nn.Linear(self.w_dim, self.w_dim)
+            #)
 
         n_backbone_channels = self._n_uv_channels
         if self._config.use_background_cnn:
             n_backbone_channels += self._config.n_background_channels
-
+        
         self.backbone = GGHStyleGAN2Backbone(self.z_dim, self.c_dim, self.w_dim,
                                              img_resolution=self._config.plane_resolution,
                                              pretrained_plane_resolution=self._config.pretrained_plane_resolution,
                                              img_channels=n_backbone_channels,
                                              mapping_kwargs=asdict(config.mapping_network_config),
                                              **asdict(config.synthesis_network_config))
-
+        
         if self._config.use_background_cnn and self._config.use_background_upsampler and self._config.img_resolution > self._config.plane_resolution:
             img_resolution_log2 = int(np.log2(self._config.img_resolution))
             plane_resolution_log2 = int(np.log2(self._config.plane_resolution))
@@ -748,19 +761,25 @@ class GGHeadModel(nn.Module):
     # Main forward
     # ==========================================================
 
-    def forward(self, z, c, truncation_psi=1, truncation_cutoff=None, neural_rendering_resolution=None,
+    def forward(self, z, c, attr, truncation_psi=1, truncation_cutoff=None, neural_rendering_resolution=None,
                 update_emas=False, cache_backbone=False,
                 use_cached_backbone=False, **synthesis_kwargs):
         # Render a batch of generated images.
-        ws = self.mapping(z, c, truncation_psi=truncation_psi, truncation_cutoff=truncation_cutoff,
+        ws = self.mapping(z, c, attr, truncation_psi=truncation_psi, truncation_cutoff=truncation_cutoff,
                           update_emas=update_emas)
         return self.synthesis(ws, c, update_emas=update_emas, neural_rendering_resolution=neural_rendering_resolution,
                               cache_backbone=cache_backbone,
                               use_cached_backbone=use_cached_backbone, **synthesis_kwargs)
 
-    def mapping(self, z, c, truncation_psi=1, truncation_cutoff=None, update_emas=False):
+    def mapping(self, z, c, attr, truncation_psi=1, truncation_cutoff=None, update_emas=False):
         if self.rendering_config.c_gen_conditioning_zero:
             c = torch.zeros_like(c)
+        
+        assert ((attr is not None) or (self.attr_embed is None and self.attr_condition is None))
+        if attr is not None:
+            attr_z = self.attr_embed(attr)
+            z = self.attr_condition(torch.cat([z, attr_z], dim=1))
+            
         return self.backbone.mapping(z, c * self.rendering_config.c_scale, truncation_psi=truncation_psi,
                                      truncation_cutoff=truncation_cutoff,
                                      update_emas=update_emas)
@@ -910,7 +929,11 @@ class GGHeadModel(nn.Module):
                               masks=masks)
 
         return output
-
+    
+    def reset_attr_parameters(self):
+        self.attr_embed.reset_parameters()
+        self.attr_condition.reset_parameters()
+    
     def _setup_gaussian_model(self, gaussian_attributes: Dict[GaussianAttribute, torch.Tensor],
                               i: int) -> GaussianModel:
         gaussian_positions = gaussian_attributes[GaussianAttribute.POSITION]

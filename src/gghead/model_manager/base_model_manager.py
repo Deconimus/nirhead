@@ -51,6 +51,7 @@ class GGHeadTrainSetup(Config):
     freeze_g_synthesis_layers: int = 0
     
     train_classifier_after_epochs: Optional[int] = None
+    static_attributes_changed: bool = False
 
 
 @dataclass
