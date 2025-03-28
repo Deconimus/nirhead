@@ -281,3 +281,10 @@ class GGHeadMaskImageFolderDataset(Dataset):
 
     def _has_static_attributes(self):
         return self._dataset_images._has_static_attributes()
+    
+    def _static_attributes(self):
+        return self._dataset_images._config.static_attributes.copy()
+    
+    def _get_static_attribute_label(self, idx):
+        return self._dataset_images._get_static_attribute_label(idx)
+    
