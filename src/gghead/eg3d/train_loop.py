@@ -365,6 +365,7 @@ def training_loop(
         copy_params(D_loaded, D, require_all=False)
         
         if experiment_config.train_setup.static_attributes_changed:
+            print("Static Attributes changed, resetting parameters of attr embedding & conditioning layers!")
             G.reset_attr_parameters()
             G_ema.reset_attr_parameters()
         
