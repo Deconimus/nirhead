@@ -51,7 +51,7 @@ def main(args):
     grid_c = torch.from_numpy(np.stack(c_list, 0)).to(device).split(args.batch)
     
     grid_z = torch.randn([grid_size[0] * grid_size[1], model.z_dim], device=device)
-    grid_attr = (torch.rand([grid_size[0] * grid_size[1], len(model._config.static_attributes)], dtype=torch.float32) + 0.5).int().float().to(device)
+    grid_attr = (torch.rand([grid_size[0] * grid_size[1], model.attr_dim], dtype=torch.float32) + 0.5).int().float().to(device)
     
     if args.bright_pupil is not None:
         grid_attr[:,0] = 1.0 if args.bright_pupil else 0.0

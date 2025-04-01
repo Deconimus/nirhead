@@ -161,6 +161,8 @@ def training_loop(
     dataset_config = experiment_config.dataset_config
     model_config = experiment_config.model_config
     
+    attr_dim = len(model_config.static_attributes) if model_config.static_attributes else 0
+    
     # ----------------------------------------------------------
     # Create Model manager
     # ----------------------------------------------------------
@@ -434,7 +436,7 @@ def training_loop(
                 c = torch.empty([batch_gpu, G.c_dim], device=device)
         else:
             c = torch.empty([batch_gpu, G.c_dim], device=device)
-        attr = torch.empty([batch_gpu, len(model_config.static_attributes)], device=device) if model_config.static_attributes else None
+        attr = torch.empty([batch_gpu, attr_dim], device=device) if model_config.static_attributes else None
         img = print_module_summary(G, [z, c, attr])
         print_module_summary(D, [img, c])
     
@@ -528,7 +530,7 @@ def training_loop(
         save_image_grid(images, os.path.join(run_dir, 'reals.png'), drange=[0, 255], grid_size=grid_size)
         grid_z = torch.randn([labels.shape[0], G.z_dim], device=device).split(batch_gpu)
         grid_c = torch.from_numpy(labels).to(device).split(batch_gpu)
-        grid_attr = (torch.rand([labels.shape[0], len(training_set._config.static_attributes)], dtype=torch.float32) + 0.5).int().float().to(device).split(batch_gpu)
+        grid_attr = (torch.rand([labels.shape[0], attr_dim], dtype=torch.float32) + 0.5).int().float().to(device).split(batch_gpu)
     
     # Initialize logs.
     if rank == 0:
@@ -615,7 +617,7 @@ def training_loop(
             all_gen_attr = None
             if training_set._has_static_attributes():
                 # TODO: this will need to be refactored, once we add non-binary attributes
-                all_gen_attr = (torch.rand([len(phases) * batch_size, len(training_set._config.static_attributes)], dtype=torch.float32) + 0.5).int().float()
+                all_gen_attr = (torch.rand([len(phases) * batch_size, attr_dim], dtype=torch.float32) + 0.5).int().float()
                 all_gen_attr = all_gen_attr.to(device)
                 all_gen_attr = [phase_gen_attr.split(batch_gpu) for phase_gen_attr in all_gen_attr.split(batch_size)]
             else:

@@ -374,12 +374,13 @@ class GGHeadModel(nn.Module):
         self.z_dim = config.z_dim
         self.c_dim = config.c_dim
         self.w_dim = config.w_dim
+        self.attr_dim = len(self._config.static_attributes) if self._config.static_attributes else 0
         
         n_backbone_channels = self._n_uv_channels
         if self._config.use_background_cnn:
             n_backbone_channels += self._config.n_background_channels
         
-        self.backbone = GGHStyleGAN2Backbone(self.z_dim, self.c_dim, self.w_dim, len(self._config.static_attributes),
+        self.backbone = GGHStyleGAN2Backbone(self.z_dim, self.c_dim, self.w_dim, self.attr_dim,
                                              img_resolution=self._config.plane_resolution,
                                              pretrained_plane_resolution=self._config.pretrained_plane_resolution,
                                              img_channels=n_backbone_channels,
@@ -437,26 +438,31 @@ class GGHeadModel(nn.Module):
         if config.use_gsm_flame_template:
             flame_template_mesh = trimesh.load(
                 f"{REPO_ROOT_DIR}/assets/flame_uv_no_back_close_mouth_no_subdivision.obj")
+            print("Loaded GSM_FLAME Template")
             uvs_per_flame_vertex = flame_template_mesh.visual.uv
             uv_coords = uvs_per_flame_vertex
             uv_faces = flame_template_mesh.faces
         elif config.use_flame_template_v2:
             flame_template_mesh = trimesh.load(f"{REPO_ROOT_DIR}/assets/flame_template_v2.obj")
+            print("Loaded FLAMEv2 Template")
             uvs_per_flame_vertex = flame_template_mesh.visual.uv
             uv_coords = uvs_per_flame_vertex
             uv_faces = flame_template_mesh.faces
         elif config.use_sphere_template:
             flame_template_mesh = trimesh.load(f"{REPO_ROOT_DIR}/assets/sphere_template.obj")
+            print("Loaded Sphere Template")
             uvs_per_flame_vertex = flame_template_mesh.visual.uv
             uv_coords = uvs_per_flame_vertex
             uv_faces = flame_template_mesh.faces
         elif config.use_halfsphere_template:
             flame_template_mesh = trimesh.load(f"{REPO_ROOT_DIR}/assets/halfsphere.obj")
+            print("Loaded Halfsphere Template")
             uvs_per_flame_vertex = flame_template_mesh.visual.uv
             uv_coords = uvs_per_flame_vertex
             uv_faces = flame_template_mesh.faces
         elif config.use_plane_template:
             flame_template_mesh = trimesh.load(f"{REPO_ROOT_DIR}/assets/plane_template.obj")
+            print("Loaded Plane Template")
             uvs_per_flame_vertex = flame_template_mesh.visual.uv
             uv_coords = uvs_per_flame_vertex
             uv_faces = flame_template_mesh.faces
