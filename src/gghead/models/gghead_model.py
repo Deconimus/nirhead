@@ -122,6 +122,7 @@ class GGHeadConfig(Config):
     use_gsm_flame_template: bool = False  # Use template with back removed and more efficient UV layout
     use_flame_template_v2: bool = False
     use_sphere_template: bool = False
+    use_halfsphere_template: bool = False
     use_plane_template: bool = False
     use_auxiliary_sphere: bool = False  # Predict additional set of Gaussians in front of face to models microphones, hands, other stuff that occludes the face
     auxiliary_sphere_radius: float = 0.1
@@ -446,6 +447,11 @@ class GGHeadModel(nn.Module):
             uv_faces = flame_template_mesh.faces
         elif config.use_sphere_template:
             flame_template_mesh = trimesh.load(f"{REPO_ROOT_DIR}/assets/sphere_template.obj")
+            uvs_per_flame_vertex = flame_template_mesh.visual.uv
+            uv_coords = uvs_per_flame_vertex
+            uv_faces = flame_template_mesh.faces
+        elif config.use_halfsphere_template:
+            flame_template_mesh = trimesh.load(f"{REPO_ROOT_DIR}/assets/halfsphere.obj")
             uvs_per_flame_vertex = flame_template_mesh.visual.uv
             uv_coords = uvs_per_flame_vertex
             uv_faces = flame_template_mesh.faces
