@@ -751,8 +751,7 @@ class GGHeadModel(nn.Module):
     # ==========================================================
 
     def forward(self, z, c, attr, truncation_psi=1, truncation_cutoff=None, neural_rendering_resolution=None,
-                update_emas=False, cache_backbone=False,
-                use_cached_backbone=False, **synthesis_kwargs):
+                update_emas=False, cache_backbone=False, use_cached_backbone=False, **synthesis_kwargs):
         # Render a batch of generated images.
         ws = self.mapping(z, c, attr, truncation_psi=truncation_psi, truncation_cutoff=truncation_cutoff,
                           update_emas=update_emas)
@@ -933,7 +932,6 @@ class GGHeadModel(nn.Module):
         self._gaussian_model._rotation = gaussian_rotations[
             i].contiguous()  # Important: Rotation needs to be contiguous!
         self._gaussian_model._opacity = gaussian_opacities[i]
-
         return self._gaussian_model
 
     def _collect_gaussian_attributes(self, attribute_names: List[GaussianAttribute], predictions: torch.Tensor,
