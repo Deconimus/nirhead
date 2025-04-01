@@ -374,22 +374,11 @@ class GGHeadModel(nn.Module):
         self.c_dim = config.c_dim
         self.w_dim = config.w_dim
         
-        self.attr_embed = None
-        self.attr_condition = None
-        if self._config.static_attributes:
-            self.attr_embed = nn.Linear(len(self._config.static_attributes), self.z_dim)
-            self.attr_condition = nn.Linear(self.z_dim*2, self.z_dim)
-            #self.attr_condition = nn.Bilinear(self.z_dim, self.z_dim, self.z_dim)
-            #self.attr_condition = nn.Sequential(
-            #   nn.Linear(self.w_dim * 2, self.w_dim),
-            #   nn.Linear(self.w_dim, self.w_dim)
-            #)
-
         n_backbone_channels = self._n_uv_channels
         if self._config.use_background_cnn:
             n_backbone_channels += self._config.n_background_channels
         
-        self.backbone = GGHStyleGAN2Backbone(self.z_dim, self.c_dim, self.w_dim,
+        self.backbone = GGHStyleGAN2Backbone(self.z_dim, self.c_dim, self.w_dim, len(self._config.static_attributes),
                                              img_resolution=self._config.plane_resolution,
                                              pretrained_plane_resolution=self._config.pretrained_plane_resolution,
                                              img_channels=n_backbone_channels,
@@ -774,13 +763,7 @@ class GGHeadModel(nn.Module):
     def mapping(self, z, c, attr, truncation_psi=1, truncation_cutoff=None, update_emas=False):
         if self.rendering_config.c_gen_conditioning_zero:
             c = torch.zeros_like(c)
-        
-        assert ((attr is not None) or (self.attr_embed is None and self.attr_condition is None))
-        if attr is not None:
-            attr_z = self.attr_embed(attr)
-            z = self.attr_condition(torch.cat([z, attr_z], dim=1))
-            
-        return self.backbone.mapping(z, c * self.rendering_config.c_scale, truncation_psi=truncation_psi,
+        return self.backbone.mapping(z, c * self.rendering_config.c_scale, attr=attr, truncation_psi=truncation_psi,
                                      truncation_cutoff=truncation_cutoff,
                                      update_emas=update_emas)
 
@@ -931,8 +914,7 @@ class GGHeadModel(nn.Module):
         return output
     
     def reset_attr_parameters(self):
-        self.attr_embed.reset_parameters()
-        self.attr_condition.reset_parameters()
+        self.backbone.mapping.reset_attr_parameters()
     
     def _setup_gaussian_model(self, gaussian_attributes: Dict[GaussianAttribute, torch.Tensor],
                               i: int) -> GaussianModel:
