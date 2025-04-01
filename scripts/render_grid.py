@@ -46,7 +46,7 @@ def main(args):
         camera_coordinate_convention=CameraCoordinateConvention.OPEN_GL)
     c_front = torch.from_numpy(encode_camera_params(pose_front, DEFAULT_INTRINSICS)).to(device).unsqueeze(0)
     
-    poses = [pose_front.rotate_euler(order="XYZ", euler_y=math.radians(min(abs(i) * (2.0 / (grid_size[0]-1 // 2)), 2.0) * (-1.0 if i < 0 else 1.0)), inplace=False) for i in range(-grid_size[0]//2, grid_size[0]-(grid_size[0]//2))]
+    poses = [pose_front.rotate_euler(order="XYZ", euler_y=math.radians(min(abs(i) * (5.0 / (grid_size[0]-1 // 2)), 5.0) * (-1.0 if i < 0 else 1.0)), inplace=False) for i in range(-grid_size[0]//2, grid_size[0]-(grid_size[0]//2))]
     c_list = [encode_camera_params(p, DEFAULT_INTRINSICS) for p in poses] * grid_size[1]
     grid_c = torch.from_numpy(np.stack(c_list, 0)).to(device).split(args.batch)
     
