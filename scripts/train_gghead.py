@@ -1,5 +1,5 @@
 import os, gc, pathlib, tyro
-from typing import Optional, Tuple, Literal
+from typing import Optional, Tuple, Literal, List
 import torch
 from eg3d import dnnlib
 from eg3d.metrics import metric_main
@@ -19,6 +19,7 @@ from gghead.models.gghead_model import GGHeadConfig, MappingNetworkConfig, Synth
 from gghead.util.metrics import fid100, fid1k, fid50k_full, fid10k
 
 from nirhead.models.classifier import ClassifierConfig
+import nirhead.data.static_attributes as stat
 
 
 def main(
@@ -171,7 +172,7 @@ def main(
         smooth_G_intro: bool = True,
         smooth_G_blend: bool = True,
         
-        static_attributes: Optional[list] = None,
+        static_attributes: Optional[List[str]] = None,
         classifier: Optional[str] = None,
         train_classifier_after_epochs: Optional[int] = None,
         
@@ -213,6 +214,7 @@ def main(
     c.data_loader_kwargs = dnnlib.EasyDict(pin_memory=True, prefetch_factor=2)
     use_dual_discrimination = use_dual_discrimination and (generator_type == 'triplanes' and resolution != neural_rendering_resolution or use_superresolution)
     
+    static_attributes = stat.normalize_attributes_list(static_attributes)
     static_attributes_changed = False
     
     if resume_run is not None:

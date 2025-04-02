@@ -1,6 +1,7 @@
 import argparse, pathlib, os, cv2, PIL.Image, math
 import torch
 import numpy as np
+
 from dreifus.camera import PoseType, CameraCoordinateConvention
 from dreifus.image import normalized_torch_to_numpy_img
 from dreifus.matrix import Pose
@@ -8,9 +9,12 @@ from eg3d.datamanager.nersemble import encode_camera_params
 from gaussian_splatting.arguments import PipelineParams2
 from gaussian_splatting.gaussian_renderer import render
 from gaussian_splatting.scene.cameras import pose_to_rendercam
+from eg3d.training.training_loop import setup_snapshot_image_grid, save_image_grid
+
 from gghead.model_manager.finder import find_model_manager
 from gghead.constants import DEFAULT_INTRINSICS
-from eg3d.training.training_loop import setup_snapshot_image_grid, save_image_grid
+
+import nirhead.data.static_attributes as stat
 
 
 if os.name == 'nt' and 'CONDA_PREFIX' in os.environ:
@@ -24,15 +28,18 @@ def main(args):
     checkpoint = -1
     if args.checkpoint:
         checkpoint = args.checkpoint
-        
-    dst_file = pathlib.Path(".") / ("grid_"+args.model+".png")
-    if args.dst:
-        dst_file = pathlib.Path(args.dst)
-        
+    
     model_manager = find_model_manager(args.model)
     checkpoint = model_manager._resolve_checkpoint_id(checkpoint)
     print(checkpoint)
     model = model_manager.load_checkpoint(checkpoint, load_ema=True).to(device)
+    
+    model_short = args.model[:args.model.index("_")]
+    grid_opts_name_str = '_'+stat.types[args.attribute_gradient].short+'_grad' if args.attribute_gradient is not None else ''
+    img_file_name = f"grid{grid_opts_name_str}_{model_short}_chk{checkpoint}.png"
+    dst_file = pathlib.Path(".") / img_file_name
+    if args.dst:
+        dst_file = pathlib.Path(args.dst)
     
     rng = torch.Generator(device)
     if not args.no_seed:
@@ -51,7 +58,7 @@ def main(args):
     grid_c = torch.from_numpy(np.stack(c_list, 0)).to(device).split(args.batch)
     
     grid_z = torch.randn([grid_size[0] * grid_size[1], model.z_dim], device=device)
-    grid_attr = (torch.rand([grid_size[0] * grid_size[1], model.attr_dim], dtype=torch.float32) + 0.5).int().float().to(device)
+    grid_attr = stat.random_attribute_tensor(model._config.static_attributes, grid_size[0] * grid_size[1], device=device)
     
     if args.bright_pupil is not None:
         grid_attr[:,0] = 1.0 if args.bright_pupil else 0.0

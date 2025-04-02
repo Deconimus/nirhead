@@ -33,6 +33,8 @@ from gghead.util.mesh import gaussians_to_mesh
 from gghead.util.rotation import axis_angle_to_quaternion
 from gghead.util.uv import gen_tritex
 
+import nirhead.data.static_attributes as stat
+
 
 @dataclass
 class MappingNetworkConfig(Config):
@@ -376,7 +378,7 @@ class GGHeadModel(nn.Module):
         self.z_dim = config.z_dim
         self.c_dim = config.c_dim
         self.w_dim = config.w_dim
-        self.attr_dim = len(self._config.static_attributes) if self._config.static_attributes else 0
+        self.attr_dim = stat.attributes_dim(self._config.static_attributes)
         
         n_backbone_channels = self._n_uv_channels
         if self._config.use_background_cnn:

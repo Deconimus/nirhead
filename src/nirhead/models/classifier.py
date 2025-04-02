@@ -1,5 +1,5 @@
 import time, inspect
-from typing import Optional
+from typing import Optional, List
 import numpy as np
 import torch, torchvision
 from torch import nn
@@ -10,6 +10,8 @@ from dataclasses import dataclass
 
 from elias.config import Config
 from eg3d.torch_utils import misc
+
+import nirhead.data.static_attributes as stat
 
 
 @dataclass
@@ -42,30 +44,26 @@ def make_crop_module(img_res: int, crop, identity=True):
 
 class Classifier(nn.Module):
     
-    def __init__(self, img_res: int, img_ch: int, label_classes: list, crop=(0,0)):
+    def __init__(self, img_res: int, img_ch: int, static_attributes: List[str], crop=(0,0)):
         super(Classifier, self).__init__()
         self.img_res = img_res
         self.img_ch = img_ch
-        self.label_classes = [l.lower().strip() for l in label_classes]
-        self.num_classes = len(label_classes)
+        self.static_attributes = stat.normalize_attributes_list(static_attributes)
+        self.attr_dim = stat.attributes_dim(self.static_attributes)
         
         self.crop = (crop, crop) if not isinstance(crop, tuple) else crop
         crop_y = img_res if self.crop[0] <= 0 else self.crop[0]
         crop_x = img_res if self.crop[1] <= 0 else self.crop[1]
         self.crop = (crop_y, crop_x)
         
-    def get_labels_tensor(self, label_tensor, label_classes):
-        label_indices = [self.label_classes.index(l.lower().strip()) for l in label_classes]
-        assert(len(label_indices) == len(label_classes))
-        idx = torch.tensor(label_indices, device=label_tensor.device)
-        idx = idx.reshape((1,-1)).repeat((label_tensor.shape[0], 1))
-        return torch.take_along_dim(label_tensor, idx, dim=1)
+    def get_attribute_tensor(self, attr_tensor, static_attributes_dst):
+        return stat.take_from_attribute_tensor(attr_tensor, self.static_attributes, static_attributes_dst)
 
 
 class TinyVGG(Classifier):
 
-    def __init__(self, img_res: int, input_channel: int, hidden_units: int, label_classes: list, crop=(0,0)):
-        super(TinyVGG, self).__init__(img_res, input_channel, label_classes, crop)
+    def __init__(self, img_res: int, input_channel: int, hidden_units: int, static_attributes: List[str], crop=(0,0)):
+        super(TinyVGG, self).__init__(img_res, input_channel, static_attributes, crop)
 
         blocks = []
         blocks.append(make_crop_module(img_res, crop))
@@ -96,7 +94,7 @@ class TinyVGG(Classifier):
 
         self.classifier = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(in_features=hidden_units**2 * self.img_res, out_features=self.num_classes)
+            nn.Linear(in_features=hidden_units**2 * self.img_res, out_features=self.attr_dim)
         )
 
     def forward(self, x: torch.Tensor):
@@ -139,7 +137,7 @@ class ResNetBlock(nn.Module):
         self.activation = nn.ReLU()
 
     def forward(self, x: torch.Tensor):
-        if (x.dtype != self.dtype):
+        if x.dtype != self.dtype:
             x = x.to(dtype=self.dtype)
         residual = self.downsample(x) if self.downsample else x
         x = self.cnn(x)
@@ -150,8 +148,8 @@ class ResNetBlock(nn.Module):
 
 class ResNet(Classifier):
 
-    def __init__(self, img_res: int, img_ch: int, label_classes: list, crop=(0, 0), ch_base=32, epilogue=False):
-        super(ResNet, self).__init__(img_res, img_ch, label_classes, crop)
+    def __init__(self, img_res: int, img_ch: int, static_attributes: List[str], crop=(0, 0), ch_base=32, epilogue=False):
+        super(ResNet, self).__init__(img_res, img_ch, static_attributes, crop)
         self.ch_base = ch_base
         self.epilogue = epilogue
 
@@ -176,7 +174,7 @@ class ResNet(Classifier):
 
         self.classifier = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(in_features=num_features, out_features=self.num_classes)
+            nn.Linear(in_features=num_features, out_features=self.attr_dim)
         )
 
     def forward(self, x: torch.Tensor):
@@ -189,8 +187,8 @@ class ResNet(Classifier):
 
 class VIT(Classifier):
 
-    def __init__(self, img_res: int, img_ch: int, label_classes: list, crop=(0, 0), patch_size=16, depth=6, heads=16, mlp_dim=1024, dim=None):
-        super(VIT, self).__init__(img_res, img_ch, label_classes, crop)
+    def __init__(self, img_res: int, img_ch: int, static_attributes: List[str], crop=(0, 0), patch_size=16, depth=6, heads=16, mlp_dim=1024, dim=None):
+        super(VIT, self).__init__(img_res, img_ch, static_attributes, crop)
         self.patch_size = patch_size
         self.depth = depth
         self.heads = heads
@@ -202,7 +200,7 @@ class VIT(Classifier):
             image_size = self.img_res,
             channels = self.img_ch,
             patch_size = self.patch_size,
-            num_classes = self.num_classes,
+            num_classes = self.attr_dim,
             dim = self.dim if self.dim else self.mlp_dim//2, #1024,
             depth = self.depth,
             heads = self.heads,
@@ -221,11 +219,11 @@ def load_classification_model(cfg: ClassifierConfig, device: str, weights_file=N
     name = ""
     
     if cfg.model.lower() == "resnet":
-        model = ResNet(img_res=cfg.img_res, img_ch=1, label_classes=cfg.labels, crop=(cfg.crop_h, 0), ch_base=cfg.ch_base, epilogue=cfg.epilogue).to(device)
+        model = ResNet(img_res=cfg.img_res, img_ch=1, static_attributes=cfg.labels, crop=(cfg.crop_h, 0), ch_base=cfg.ch_base, epilogue=cfg.epilogue).to(device)
         name = "resnet_chbase" + str(cfg.ch_base) + ("_epilogue" if cfg.epilogue else "") + (f"_croph{cfg.crop_h}" if cfg.crop_h else "")  + "_" + str(int(time.time()))
         
     elif cfg.model.lower() == "tvgg" or cfg.model.lower() == "tinyvgg":
-        model = TinyVGG(img_res=cfg.img_res, input_channel=1, hidden_units=cfg.ch_base, label_classes=cfg.labels, crop=(cfg.crop_h, 0)).to(device)
+        model = TinyVGG(img_res=cfg.img_res, input_channel=1, hidden_units=cfg.ch_base, static_attributes=cfg.labels, crop=(cfg.crop_h, 0)).to(device)
         name = "tinyvgg_units" + str(cfg.ch_base) + (f"_croph{cfg.crop_h}" if cfg.crop_h else "")  + "_" + str(int(time.time()))
         
     elif cfg.model.lower() == "vit" or cfg.model.lower() == "simplevit":
@@ -234,7 +232,7 @@ def load_classification_model(cfg: ClassifierConfig, device: str, weights_file=N
         heads = cfg.vit_heads if cfg.vit_heads else 8
         depth = cfg.vit_depth if cfg.vit_depth else 4
         
-        model = VIT(img_res=cfg.img_res, img_ch=1, label_classes=cfg.labels, crop=(cfg.crop_h, 0), patch_size=cfg.patch_size, mlp_dim=mlp_dim, dim=dim, heads=heads, depth=depth).to(device)
+        model = VIT(img_res=cfg.img_res, img_ch=1, static_attributes=cfg.labels, crop=(cfg.crop_h, 0), patch_size=cfg.patch_size, mlp_dim=mlp_dim, dim=dim, heads=heads, depth=depth).to(device)
         name = f"simplevit{cfg.patch_size}_mlpdim{mlp_dim}" + (f"_dim{dim}" if dim else "") + f"_heads{heads}_depth{depth}" + (f"_croph{cfg.crop_h}" if cfg.crop_h else "") + "_" + str(int(time.time()))
         
     if weights_file:

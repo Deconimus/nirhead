@@ -189,7 +189,7 @@ class GGHeadStyleGAN2Loss(StyleGAN2Loss):
                 img = img.repeat(repeats=(1,3,1,1))
         
         y = self.C(img)
-        y = self.C.get_labels_tensor(y, self.static_attributes) # filter labels, as the Classifier might have more inherent labels than just our static_attributes
+        y = self.C.get_attribute_tensor(y, self.static_attributes) # filter labels, as the Classifier might have more inherent labels than just our static_attributes
         
         return y
 

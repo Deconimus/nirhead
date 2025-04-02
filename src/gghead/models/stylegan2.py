@@ -4,7 +4,7 @@ import numpy as np
 import torch
 from eg3d.torch_utils import misc
 from eg3d.torch_utils.ops import upfirdn2d
-from eg3d.training.networks_stylegan2 import MappingNetwork, SynthesisLayer, ToRGBLayer, Conv2dLayer
+from nirhead.eg3d.training.networks_stylegan2 import MappingNetwork, SynthesisLayer, ToRGBLayer, Conv2dLayer
 from torch import nn
 
 

@@ -12,15 +12,18 @@ from nirhead.dataset.classification_dataset import ClassificationDataSet
 from run_classifier import predict_labels
 from label_accuracy import evaluate_accuracy
 
+import nirhead.data.static_attributes as stat
+
 
 def main(args):
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     assert(device == "cuda:0")
 
     dl_workers = multiprocessing.cpu_count() if not args.dataset.lower().endswith(".zip") else 1
+    label_classes = stat.normalize_attributes_list(args.labels)
 
-    trainset = ClassificationDataSet(args.dataset, subdir="train", resolution=args.img_res, mode="gray", labelclasses=args.labels, flip=args.flip_aug)
-    testset = ClassificationDataSet(args.dataset, subdir="test", resolution=args.img_res, mode="gray", labelclasses=args.labels)
+    trainset = ClassificationDataSet(args.dataset, subdir="train", resolution=args.img_res, mode="gray", labelclasses=label_classes, flip=args.flip_aug)
+    testset = ClassificationDataSet(args.dataset, subdir="test", resolution=args.img_res, mode="gray", labelclasses=label_classes)
     dl_train = DataLoader(trainset, batch_size=args.batch_size, shuffle=True, num_workers=dl_workers, drop_last=True)
     dl_test = DataLoader(testset, batch_size=args.batch_size, shuffle=False, num_workers=dl_workers, drop_last=False)
 
@@ -30,7 +33,7 @@ def main(args):
     model_cfg = classifier.ClassifierConfig.from_dict(dict(vars(args)))
     model, name = classifier.load_classification_model(model_cfg, device)
     
-    loss_fn = nn.BCEWithLogitsLoss()
+    loss_fn = lambda x, y: stat.attributes_loss(x, y, label_classes) # nn.BCEWithLogitsLoss()
     optimizer = torch.optim.Adam(params=model.parameters(), lr=0.0001)
 
     train_time_start = timer()
@@ -66,8 +69,8 @@ def main(args):
     print(f"Train time on {device}: {(train_time_end-train_time_start):.2f}s")
     print(f"Best test accuracy: {max(data['test_acc'])} (epoch {data['test_acc'].index(max(data['test_acc']))})")
 
-    model_class_concat = "_".join(args.labels)
-
+    model_class_concat = "_".join([stat.types[l].short for l in label_classes])
+    
     if args.logdir:
         save_log(data, pathlib.Path(args.logdir) / model_class_concat, name)
 
@@ -93,7 +96,7 @@ def main(args):
         labels_gt = {}
         with open(pathlib.Path(args.eval[1]), "r") as f:
             labels_gt = json.load(f)
-        labels_pred = predict_labels(model, dl_eval, args.labels, device, args.batch_size)
+        labels_pred = predict_labels(model, dl_eval, label_classes, device, args.batch_size)
         
         evaluate_accuracy(gt=labels_gt, pred=labels_pred, filter=True)
         
