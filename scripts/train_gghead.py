@@ -73,6 +73,7 @@ def main(
         use_flame_template_v2: bool = False,
         use_sphere_template: bool = False,
         use_halfsphere_template: bool = False,
+        use_halfsphere_inverse_template: bool = False,
         use_plane_template: bool = False,
 
         # Gaussian Decoding
@@ -450,6 +451,7 @@ def main(
                 use_flame_template_v2=use_flame_template_v2,
                 use_sphere_template=use_sphere_template,
                 use_halfsphere_template=use_halfsphere_template,
+                use_halfsphere_inverse_template=use_halfsphere_inverse_template,
                 use_plane_template=use_plane_template,
 
                 uv_attributes=uv_attributes,
