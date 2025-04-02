@@ -124,6 +124,7 @@ class GGHeadConfig(Config):
     use_sphere_template: bool = False
     use_halfsphere_template: bool = False
     use_halfsphere_inverse_template: bool = False
+    use_eyecrop_template: bool = False
     use_plane_template: bool = False
     use_auxiliary_sphere: bool = False  # Predict additional set of Gaussians in front of face to models microphones, hands, other stuff that occludes the face
     auxiliary_sphere_radius: float = 0.1
@@ -436,14 +437,7 @@ class GGHeadModel(nn.Module):
         self.neural_rendering_resolution = self._config.neural_rendering_resolution
         self.rendering_config = config.rendering_config
 
-        if config.use_gsm_flame_template:
-            flame_template_mesh = trimesh.load(
-                f"{REPO_ROOT_DIR}/assets/flame_uv_no_back_close_mouth_no_subdivision.obj")
-            print("Loaded GSM_FLAME Template")
-        elif config.use_flame_template_v2:
-            flame_template_mesh = trimesh.load(f"{REPO_ROOT_DIR}/assets/flame_template_v2.obj")
-            print("Loaded FLAMEv2 Template")
-        elif config.use_sphere_template:
+        if config.use_sphere_template:
             flame_template_mesh = trimesh.load(f"{REPO_ROOT_DIR}/assets/sphere_template.obj")
             print("Loaded Sphere Template")
         elif config.use_halfsphere_template:
@@ -455,6 +449,15 @@ class GGHeadModel(nn.Module):
         elif config.use_plane_template:
             flame_template_mesh = trimesh.load(f"{REPO_ROOT_DIR}/assets/plane_template.obj")
             print("Loaded Plane Template")
+        elif config.use_eyecrop_template:
+            flame_template_mesh = trimesh.load(f"{REPO_ROOT_DIR}/assets/flame_eyecrop_template.obj")
+            print("Loaded EyeCrop Template")
+        elif config.use_gsm_flame_template:
+            flame_template_mesh = trimesh.load(f"{REPO_ROOT_DIR}/assets/flame_uv_no_back_close_mouth_no_subdivision.obj")
+            print("Loaded GSM_FLAME Template")
+        elif config.use_flame_template_v2:
+            flame_template_mesh = trimesh.load(f"{REPO_ROOT_DIR}/assets/flame_template_v2.obj")
+            print("Loaded FLAMEv2 Template")
         else:
             raise ValueError("No mesh template specified!")
         
