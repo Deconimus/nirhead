@@ -86,7 +86,9 @@ def attributes_loss(attr_pred: torch.Tensor, attr_truth: torch.Tensor, static_at
     return loss
 
 
-def take_from_attribute_tensor(self, attributes_tensor_src, static_attributes_src, static_attributes_dst):
+def take_from_attribute_tensor(attributes_tensor_src, static_attributes_src, static_attributes_dst):
+    if static_attributes_src == static_attributes_dst:
+        return attributes_tensor_src
     assert (all([(attr in static_attributes_src) for attr in static_attributes_dst]))
     attr_dim_dst = attributes_dim(static_attributes_dst)
     
@@ -109,6 +111,9 @@ def take_from_attribute_tensor(self, attributes_tensor_src, static_attributes_sr
 
     
 def take_binary_from_attribute_tensor(attr_tensor: torch.Tensor, static_attributes: List[str]):
+    if all([(types[attr].dtype == bool) for attr in static_attributes]):
+        return attr_tensor
+    
     attr_indices = []
     idx_offset = 0
     for attr in static_attributes:

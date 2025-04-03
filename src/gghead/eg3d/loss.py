@@ -15,6 +15,8 @@ from gghead.config.gaussian_attribute import GaussianAttribute
 from gghead.models.gghead_model import GGHeadModel
 from gghead.util.logging import LoggerBundle
 
+import nirhead.data.static_attributes as stat
+
 
 @dataclass
 class GGHeadStyleGAN2LossConfig(Config):
@@ -405,16 +407,13 @@ class GGHeadStyleGAN2Loss(StyleGAN2Loss):
                         loss_Gmain = loss_Gmain + self._config.lambda_tv_uv_rendering * reg_tv_uv_rendering
                         
                     if self._config.lambda_classifier_loss > 0 and self.C and len(self.static_attributes) > 0:
-                        attr_pred = self.run_C(gen_img.images)
-                        #attr_gt = torch.ones_like(attr_pred, device=attr_pred.device)
-                        classifier_loss = torch.nn.functional.binary_cross_entropy_with_logits(attr_pred, gen_attr)
+                        attr_pred = self.C.get_attribute_tensor(self.run_C(gen_img.images), self.static_attributes)
+                        classifier_loss = stat.attributes_loss(attr_pred, gen_attr, self.static_attributes)
                         self._logger_bundle.log_metrics({
                             'Loss/G/classifier_loss': classifier_loss
                         }, step=cur_nimg)
                         loss_Gmain = loss_Gmain + self._config.lambda_classifier_loss * classifier_loss
                         
-                        # TODO: Maybe also run Classifier in Discriminator phases?
-
             with torch.autograd.profiler.record_function('Gmain_backward'):
                 loss_Gmain.mean().mul(gain).backward()
                 gradients_with_nan = [n for n, p in self.G.named_parameters() if p.grad is not None and p.grad.isnan().any()]
