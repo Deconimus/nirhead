@@ -25,7 +25,8 @@ class ClassificationDataSet:
             self._type = "dir"
         else:
             return
-
+        
+        self.images = []
         if self._type == "zip":
             self.images = [f for f in self._get_zipfile().namelist() if f.replace("\\", "/").startswith((self.subdir+"/" if self.subdir else "")) and f.endswith(".png")]
         else:
@@ -44,6 +45,7 @@ class ClassificationDataSet:
                 self.labels.append(np.array(l, dtype=np.float32))
 
         assert(self.inference or len(self.images) == len(self.labels))
+        
 
     def __len__(self):
         return len(self.images) if not self.flip else len(self.images)*2
