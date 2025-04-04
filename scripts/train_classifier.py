@@ -35,7 +35,6 @@ def main(args):
     model_cfg = classifier.ClassifierConfig.from_dict(dict(vars(args)))
     model, name = classifier.load_classification_model(model_cfg, device)
     
-    #loss_fn = nn.BCEWithLogitsLoss()
     optimizer = torch.optim.Adam(params=model.parameters(), lr=0.0001)
 
     train_time_start = timer()
@@ -45,19 +44,21 @@ def main(args):
     try:
         for epoch in range(args.epochs):
             with tqdm(total=(len(trainset) // args.batch_size)+int(math.ceil(len(testset) / args.batch_size)), leave=False) as pbar:
-                train_loss, train_acc, train_mse = train_step(dl_train, model, loss_fn, optimizer, label_classes, device, pbar)
-                test_loss, test_acc, test_mse = test_step(dl_test, model, loss_fn, label_classes, device, pbar)
+                train_loss, train_acc, train_mse, train_bce = train_step(dl_train, model, optimizer, label_classes, device, pbar)
+                test_loss, test_acc, test_mse, test_bce = test_step(dl_test, model, label_classes, device, pbar)
 
-            print(f"Epoch {epoch:04} | Train: (loss={train_loss:.6f}, acc={train_acc:.3f}, mse={train_mse:.6f})"+
-                  f" | Test (loss={test_loss:.6f}, acc={test_acc:.3f}, mse={test_mse:.6f})"+
+            print(f"Epoch {epoch:04} | Train: (loss={train_loss:.6f}, acc={train_acc:.3f}, mse={train_mse:.6f}, bce={train_bce:.6f})"+
+                  f" | Test (loss={test_loss:.6f}, acc={test_acc:.3f}, mse={test_mse:.6f}, bce={test_bce:.6f})"+
                   f" | CUDA alloc: {torch.cuda.memory_allocated(0)/(2**30):.3f}GB, rsrvd: {torch.cuda.memory_reserved(0)/(2**30):.3}GB")
             
             data["train_loss"].append(float(train_loss))
             data["train_acc"].append(float(train_acc))
             data["train_mse"].append(float(train_mse))
+            data["train_mse"].append(float(train_bce))
             data["test_loss"].append(float(test_loss))
             data["test_acc"].append(float(test_acc))
             data["test_mse"].append(float(test_mse))
+            data["train_mse"].append(float(test_bce))
 
             if args.stop_at_acc and test_acc >= args.stop_at_acc:
                 print(f"Test accuracy goal reached, stopping training at test_acc={test_acc}")
@@ -106,20 +107,21 @@ def main(args):
         evaluate_accuracy(gt=labels_gt, pred=labels_pred, filter=True)
         
 
-def train_step(data_loader, model, loss_fn, optimizer, static_attributes, device, pbar):
-    train_loss, train_acc, train_mse = 0.0, 0.0, 0.0
+def train_step(data_loader, model, optimizer, static_attributes, device, pbar):
+    train_loss, train_acc, train_mse, train_bce = 0.0, 0.0, 0.0, 0.0
 
     for batch, (x, y) in enumerate(data_loader):
         x, y = x.to(device), y.to(device)
 
         y_pred = model(x)
 
-        loss = stat.attributes_loss(y_pred, y, static_attributes, stat.default_attributes_lambdas)
+        loss = stat.attributes_loss(y_pred, y, static_attributes)
         train_loss += loss
-        train_acc += calc_accuracy(y_true=y, y_pred=y_pred, static_attributes=static_attributes)
+        train_acc += calc_accuracy(y_pred=y_pred, y_true=y, static_attributes=static_attributes)
         
         with torch.no_grad():
-            train_mse += calc_mse(y_true=y, y_pred=y_pred, static_attributes=static_attributes)
+            train_mse += calc_mse(y_pred=y_pred, y_true=y, static_attributes=static_attributes)
+            train_bce += calc_bce(y_pred=y_pred, y_true=y, static_attributes=static_attributes)
 
         optimizer.zero_grad()
         loss.backward()
@@ -130,12 +132,13 @@ def train_step(data_loader, model, loss_fn, optimizer, static_attributes, device
     train_loss /= len(data_loader)
     train_acc  /= len(data_loader)
     with torch.no_grad():
-        train_mse  /= len(data_loader)
-    return train_loss, train_acc, train_mse
+        train_mse /= len(data_loader)
+        train_bce /= len(data_loader)
+    return train_loss, train_acc, train_mse, train_bce
 
 
-def test_step(data_loader, model, loss_fn, static_attributes, device, pbar):
-    test_loss, test_acc, test_mse = 0.0, 0.0, 0.0
+def test_step(data_loader, model, static_attributes, device, pbar):
+    test_loss, test_acc, test_mse, test_bce = 0.0, 0.0, 0.0, 0.0
     model.eval() # evaluation mode
 
     with torch.inference_mode():
@@ -144,19 +147,21 @@ def test_step(data_loader, model, loss_fn, static_attributes, device, pbar):
 
             y_pred = model(x)
 
-            test_loss += stat.attributes_loss(y_pred, y, static_attributes, stat.default_attributes_lambdas)
-            test_acc += calc_accuracy(y_true=y, y_pred=y_pred, static_attributes=static_attributes)
-            test_mse += calc_mse(y_true=y, y_pred=y_pred, static_attributes=static_attributes)
+            test_loss += stat.attributes_loss(y_pred, y, static_attributes)
+            test_acc += calc_accuracy(y_pred=y_pred, y_true=y, static_attributes=static_attributes)
+            test_mse += calc_mse(y_pred=y_pred, y_true=y, static_attributes=static_attributes)
+            test_bce += calc_bce(y_pred=y_pred, y_true=y, static_attributes=static_attributes)
             
             pbar.update(1)
-
+        
         test_loss /= len(data_loader)
         test_acc  /= len(data_loader)
         test_mse  /= len(data_loader)
-        return test_loss, test_acc, test_mse
+        test_bce  /= len(data_loader)
+        return test_loss, test_acc, test_mse, test_bce
 
 
-def calc_accuracy(y_true, y_pred, static_attributes):
+def calc_accuracy(y_pred, y_true, static_attributes):
     if stat.get_num_binary_attributes(static_attributes) <= 0:
         return 0.0
     
@@ -175,19 +180,35 @@ def calc_accuracy(y_true, y_pred, static_attributes):
     return acc
 
 
-def calc_mse(y_true, y_pred, static_attributes):
+def calc_mse(y_pred, y_true, static_attributes):
+    num_attributes = len(static_attributes)
     num_binary_attributes = stat.get_num_binary_attributes(static_attributes)
-    lambda_single_attr = 1.0 / (len(static_attributes) - num_binary_attributes)
     
     loss = 0.0
     idx_off = 0
     for attr in static_attributes:
         dim = stat.types[attr].dim
         if stat.types[attr].dtype == float or stat.types[attr].dtype == int:
-            loss = loss + torch.nn.functional.mse_loss(y_pred[:, idx_off:idx_off + dim], y_true[:, idx_off:idx_off + dim]) * lambda_single_attr
-        
+            loss += torch.nn.functional.mse_loss(y_pred[:, idx_off:idx_off + dim], y_true[:, idx_off:idx_off + dim])
+        idx_off += dim
+    loss *= (num_attributes - num_binary_attributes) / num_attributes
+    
     return loss
 
+
+def calc_bce(y_pred, y_true, static_attributes):
+    num_attributes = len(static_attributes)
+    num_binary_attributes = stat.get_num_binary_attributes(static_attributes)
+    
+    lambda_binary = num_binary_attributes / num_attributes
+    binary_loss = 0.0
+    if num_binary_attributes > 0:
+        binary_attr_pred = stat.take_binary_from_attribute_tensor(y_pred, static_attributes)
+        binary_attr_truth = stat.take_binary_from_attribute_tensor(y_true, static_attributes)
+        binary_loss = torch.nn.functional.binary_cross_entropy_with_logits(binary_attr_pred, binary_attr_truth) * lambda_binary
+        
+    return binary_loss
+    
 
 def save_log(data, logdir, name):
     os.makedirs(logdir, exist_ok=True)

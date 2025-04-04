@@ -28,40 +28,38 @@ default_attribute_lambdas = None # { attr.name: 1.0 for attr in types_list }
 def attributes_loss(attr_pred: torch.Tensor,
                     attr_truth: torch.Tensor,
                     static_attributes: List[str],
-                    attribute_lambdas: Optional[List[float]] = default_attribute_lambdas):
-    
+                    #attribute_lambdas: Optional[List[float]] = default_attribute_lambdas
+                    ):
     num_attributes = len(static_attributes)
     num_binary_attributes = get_num_binary_attributes(static_attributes)
     
     lambda_binary = num_binary_attributes / num_attributes
-    lambda_single_attr = 1.0 / num_attributes
-    
-    bce_loss = 0.0
+    binary_loss = 0.0
     if num_binary_attributes > 0:
         binary_attr_pred  = take_binary_from_attribute_tensor(attr_pred, static_attributes)
         binary_attr_truth = take_binary_from_attribute_tensor(attr_truth, static_attributes)
-        bce_loss = torch.nn.functional.binary_cross_entropy_with_logits(binary_attr_pred, binary_attr_truth) * lambda_binary
+        binary_loss = torch.nn.functional.binary_cross_entropy_with_logits(binary_attr_pred, binary_attr_truth) * lambda_binary
     
-    float_loss = 0.0
-    idx_off = 0
-    for attr in static_attributes:
-        dim = types[attr].dim
-        loss_fun = None # or fun loss?
-        if types[attr].dtype == float or types[attr].dtype == int:
-            #if dim > 1:
-            #    loss_fun = torch.nn.functional.mse_loss # what did Euklid do to you, that you didn't just call it l2_loss?
-            #else:
-            #    loss_fun = torch.nn.functional.l1_loss
-            loss_fun = torch.nn.functional.l1_loss
+    discrete_loss = 0.0
+    if num_binary_attributes < num_attributes:
+        idx_off = 0
+        for attr in static_attributes:
+            dim = types[attr].dim
             
-        if loss_fun is not None:
-            attr_lambda = 1.0 if attribute_lambdas is None or attr not in attribute_lambdas.keys() else attribute_lambdas[attr]
-            float_loss += loss_fun(attr_pred[:,idx_off:idx_off+dim], attr_truth[:,idx_off:idx_off+dim]) * lambda_single_attr * attr_lambda
+            loss_fun = None # or fun loss?
+            if types[attr].dtype == float or types[attr].dtype == int:
+                loss_fun = torch.nn.functional.mse_loss
+                
+            if loss_fun is not None:
+                attr_lambda = 1.0 # if attribute_lambdas is None or attr not in attribute_lambdas.keys() else attribute_lambdas[attr]
+                discrete_loss += loss_fun(attr_pred[:,idx_off:idx_off+dim], attr_truth[:,idx_off:idx_off+dim]) * attr_lambda
+                
+            idx_off += dim
             
-        idx_off += dim
+        discrete_loss *= (num_attributes - num_binary_attributes) / num_attributes
     
-    #print(f"{bce_loss} {float_loss}")
-    return bce_loss + float_loss
+    #print(f"{binary_loss} {discrete_loss}")
+    return binary_loss + discrete_loss
 
 
 def take_from_attribute_tensor(attributes_tensor_src, static_attributes_src, static_attributes_dst):
