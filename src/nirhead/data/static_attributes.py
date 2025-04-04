@@ -46,13 +46,17 @@ def attributes_loss(attr_pred: torch.Tensor,
         for attr in static_attributes:
             dim = types[attr].dim
             
-            loss_fun = None # or fun loss?
+            discrete_loss_attr = 0.0
             if types[attr].dtype == float or types[attr].dtype == int:
-                loss_fun = torch.nn.functional.mse_loss
+                if dim > 1:
+                    discrete_loss_attr = torch.nn.functional.mse_loss(attr_pred[:,idx_off:idx_off+dim], attr_truth[:,idx_off:idx_off+dim])
+                    discrete_loss_attr = torch.sqrt(discrete_loss_attr)
+                else:
+                    discrete_loss_attr = torch.nn.functional.l1_loss(attr_pred[:, idx_off:idx_off + dim], attr_truth[:, idx_off:idx_off + dim])
+                #discrete_loss_attr = torch.nn.functional.mse_loss(attr_pred[:, idx_off:idx_off + dim], attr_truth[:, idx_off:idx_off + dim])
                 
-            if loss_fun is not None:
                 attr_lambda = 1.0 # if attribute_lambdas is None or attr not in attribute_lambdas.keys() else attribute_lambdas[attr]
-                discrete_loss += loss_fun(attr_pred[:,idx_off:idx_off+dim], attr_truth[:,idx_off:idx_off+dim]) * attr_lambda
+                discrete_loss += discrete_loss_attr * attr_lambda
                 
             idx_off += dim
             

@@ -39,26 +39,26 @@ def main(args):
 
     train_time_start = timer()
 
-    data = {"train_loss": [], "train_acc": [], "train_mse": [], "test_loss": [], "test_acc": [], "test_mse": []}
+    data = {"train_loss": [], "train_acc": [], "train_rmse": [], "test_loss": [], "test_acc": [], "test_rmse": []}
 
     try:
         for epoch in range(args.epochs):
             with tqdm(total=(len(trainset) // args.batch_size)+int(math.ceil(len(testset) / args.batch_size)), leave=False) as pbar:
-                train_loss, train_acc, train_mse, train_bce = train_step(dl_train, model, optimizer, label_classes, device, pbar)
-                test_loss, test_acc, test_mse, test_bce = test_step(dl_test, model, label_classes, device, pbar)
+                train_loss, train_acc, train_rmse, train_bce = train_step(dl_train, model, optimizer, label_classes, device, pbar)
+                test_loss, test_acc, test_rmse, test_bce = test_step(dl_test, model, label_classes, device, pbar)
 
-            print(f"Epoch {epoch:04} | Train: (loss={train_loss:.6f}, acc={train_acc:.3f}, mse={train_mse:.6f}, bce={train_bce:.6f})"+
-                  f" | Test (loss={test_loss:.6f}, acc={test_acc:.3f}, mse={test_mse:.6f}, bce={test_bce:.6f})"+
+            print(f"Epoch {epoch:04} | Train: (loss={train_loss:.6f}, acc={train_acc:.3f}, rmse={train_rmse:.6f}, bce={train_bce:.6f})"+
+                  f" | Test (loss={test_loss:.6f}, acc={test_acc:.3f}, rmse={test_rmse:.6f}, bce={test_bce:.6f})"+
                   f" | CUDA alloc: {torch.cuda.memory_allocated(0)/(2**30):.3f}GB, rsrvd: {torch.cuda.memory_reserved(0)/(2**30):.3}GB")
             
             data["train_loss"].append(float(train_loss))
             data["train_acc"].append(float(train_acc))
-            data["train_mse"].append(float(train_mse))
-            data["train_mse"].append(float(train_bce))
+            data["train_rmse"].append(float(train_rmse))
+            data["train_rmse"].append(float(train_bce))
             data["test_loss"].append(float(test_loss))
             data["test_acc"].append(float(test_acc))
-            data["test_mse"].append(float(test_mse))
-            data["train_mse"].append(float(test_bce))
+            data["test_rmse"].append(float(test_rmse))
+            data["train_rmse"].append(float(test_bce))
 
             if args.stop_at_acc and test_acc >= args.stop_at_acc:
                 print(f"Test accuracy goal reached, stopping training at test_acc={test_acc}")
@@ -104,11 +104,11 @@ def main(args):
             labels_gt = json.load(f)
         labels_pred = predict_labels(model, dl_eval, label_classes, device, args.batch_size)
         
-        evaluate_accuracy(gt=labels_gt, pred=labels_pred, filter=True)
+        evaluate_accuracy(gt=labels_gt, pred=labels_pred, filter=False)
         
 
 def train_step(data_loader, model, optimizer, static_attributes, device, pbar):
-    train_loss, train_acc, train_mse, train_bce = 0.0, 0.0, 0.0, 0.0
+    train_loss, train_acc, train_rmse, train_bce = 0.0, 0.0, 0.0, 0.0
 
     for batch, (x, y) in enumerate(data_loader):
         x, y = x.to(device), y.to(device)
@@ -120,7 +120,7 @@ def train_step(data_loader, model, optimizer, static_attributes, device, pbar):
         train_acc += calc_accuracy(y_pred=y_pred, y_true=y, static_attributes=static_attributes)
         
         with torch.no_grad():
-            train_mse += calc_mse(y_pred=y_pred, y_true=y, static_attributes=static_attributes)
+            train_rmse += calc_rmse(y_pred=y_pred, y_true=y, static_attributes=static_attributes)
             train_bce += calc_bce(y_pred=y_pred, y_true=y, static_attributes=static_attributes)
 
         optimizer.zero_grad()
@@ -132,13 +132,13 @@ def train_step(data_loader, model, optimizer, static_attributes, device, pbar):
     train_loss /= len(data_loader)
     train_acc  /= len(data_loader)
     with torch.no_grad():
-        train_mse /= len(data_loader)
+        train_rmse /= len(data_loader)
         train_bce /= len(data_loader)
-    return train_loss, train_acc, train_mse, train_bce
+    return train_loss, train_acc, train_rmse, train_bce
 
 
 def test_step(data_loader, model, static_attributes, device, pbar):
-    test_loss, test_acc, test_mse, test_bce = 0.0, 0.0, 0.0, 0.0
+    test_loss, test_acc, test_rmse, test_bce = 0.0, 0.0, 0.0, 0.0
     model.eval() # evaluation mode
 
     with torch.inference_mode():
@@ -149,16 +149,16 @@ def test_step(data_loader, model, static_attributes, device, pbar):
 
             test_loss += stat.attributes_loss(y_pred, y, static_attributes)
             test_acc += calc_accuracy(y_pred=y_pred, y_true=y, static_attributes=static_attributes)
-            test_mse += calc_mse(y_pred=y_pred, y_true=y, static_attributes=static_attributes)
+            test_rmse += calc_rmse(y_pred=y_pred, y_true=y, static_attributes=static_attributes)
             test_bce += calc_bce(y_pred=y_pred, y_true=y, static_attributes=static_attributes)
             
             pbar.update(1)
         
         test_loss /= len(data_loader)
         test_acc  /= len(data_loader)
-        test_mse  /= len(data_loader)
+        test_rmse  /= len(data_loader)
         test_bce  /= len(data_loader)
-        return test_loss, test_acc, test_mse, test_bce
+        return test_loss, test_acc, test_rmse, test_bce
 
 
 def calc_accuracy(y_pred, y_true, static_attributes):
@@ -180,7 +180,7 @@ def calc_accuracy(y_pred, y_true, static_attributes):
     return acc
 
 
-def calc_mse(y_pred, y_true, static_attributes):
+def calc_rmse(y_pred, y_true, static_attributes):
     num_attributes = len(static_attributes)
     num_binary_attributes = stat.get_num_binary_attributes(static_attributes)
     
@@ -189,7 +189,7 @@ def calc_mse(y_pred, y_true, static_attributes):
     for attr in static_attributes:
         dim = stat.types[attr].dim
         if stat.types[attr].dtype == float or stat.types[attr].dtype == int:
-            loss += torch.nn.functional.mse_loss(y_pred[:, idx_off:idx_off + dim], y_true[:, idx_off:idx_off + dim])
+            loss += torch.sqrt(torch.nn.functional.mse_loss(y_pred[:, idx_off:idx_off + dim], y_true[:, idx_off:idx_off + dim]))
         idx_off += dim
     loss *= (num_attributes - num_binary_attributes) / num_attributes
     
@@ -232,6 +232,7 @@ if __name__ == "__main__":
     parser.add_argument("--logdir", type=str)
     parser.add_argument("--savedir", type=str)
     
+    #parser.add_argument("--no_train", type=str)
     parser.add_argument("--resume", type=str)
     parser.add_argument("--eval", type=str, nargs=2)
     parser.add_argument("--stop_at_acc", type=float)
