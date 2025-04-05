@@ -23,19 +23,25 @@ def main(args):
         if len(images) > 0:
             files += images[-2:]
     
-    checkpoint_sort_fn = lambda f: int(f.name[f.name.index("-") + 1:f.name.rindex(".")])
+    get_checkpoint_nr = lambda f: int(f.name[f.name.index("-") + 1:f.name.rindex(".")])
     
     checkpoints = list((src_dir / "checkpoints").rglob("*.pkl"))
-    checkpoints.sort(key=checkpoint_sort_fn)
+    checkpoints.sort(key=get_checkpoint_nr)
     if not args.all:
-        checkpoints = [checkpoints[-1]]
+        if args.checkpoints is not None:
+            chks = [chk for chk in checkpoints if get_checkpoint_nr(chk) in args.checkpoints]
+            if -1 in args.checkpoints and not checkpoints[-1] in chks:
+                chks += [checkpoints[-1]]
+            checkpoints = chks
+        else:
+            checkpoints = [checkpoints[-1]]
     files += checkpoints
     
     for cls_dir in (src_dir / "classifier").glob("*"):
         if not os.path.isdir(cls_dir):
             continue
         cls_checkpoints = list((cls_dir / "checkpoints").rglob("*.pkl"))
-        cls_checkpoints.sort(key=checkpoint_sort_fn)
+        cls_checkpoints.sort(key=get_checkpoint_nr)
         if not args.all:
             cls_checkpoints = [cls_checkpoints[-1]]
         files += cls_checkpoints
@@ -61,11 +67,11 @@ def copy_file(src_file, dst_file, force_overwrite, pbar=None):
         pbar.update(1)
 
 
-if __name__ == ("__main__"):
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-m", "--model", type=str)
-    parser.add_argument("-s", "--src", type=str,
-                        default="/mnt/cccavefs/ccmlops/2024-11-07-MA_PascalSielski/gghead_results")
+    parser.add_argument("-c", "--checkpoints", type=int, nargs="+", default=None)
+    parser.add_argument("-s", "--src", type=str, default="/mnt/cccavefs/ccmlops/2024-11-07-MA_PascalSielski/gghead_results")
     parser.add_argument("-d", "--dst", type=str, default="models/gghead")
     parser.add_argument("-a", "--all", action="store_true", default=False)
     parser.add_argument("-i", "--images", action="store_true", default=False)
