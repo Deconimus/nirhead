@@ -40,10 +40,16 @@ def main(args):
     for cls_dir in (src_dir / "classifier").glob("*"):
         if not os.path.isdir(cls_dir):
             continue
-        cls_checkpoints = list((cls_dir / "checkpoints").rglob("*.pkl"))
+        cls_checkpoints = list((cls_dir / "checkpoints").rglob("*.pth"))
         cls_checkpoints.sort(key=get_checkpoint_nr)
         if not args.all:
-            cls_checkpoints = [cls_checkpoints[-1]]
+            if args.checkpoints is not None:
+                chks = [chk for chk in cls_checkpoints if get_checkpoint_nr(chk) in args.checkpoints]
+                if -1 in args.checkpoints and not cls_checkpoints[-1] in chks:
+                    chks += [cls_checkpoints[-1]]
+                cls_checkpoints = chks
+            else:
+                cls_checkpoints = [cls_checkpoints[-1]]
         files += cls_checkpoints
     
     with tqdm(total=len(files)) as pbar:
