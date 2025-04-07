@@ -82,7 +82,7 @@ if __name__ == "__main__":
     parser.add_argument("-a", "--all", action="store_true", default=False)
     parser.add_argument("-i", "--images", action="store_true", default=False)
     parser.add_argument("-f", "--force_overwrite", action="store_true", default=False)
-    parser.add_argument("-t", "--threads", type=int, default=8)
+    parser.add_argument("-t", "--threads", type=int, default=4)
     args = parser.parse_args()
     
     main(args)

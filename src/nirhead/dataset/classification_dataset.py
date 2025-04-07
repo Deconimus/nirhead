@@ -4,6 +4,8 @@ import numpy as np
 from eg3d.training.dataset import pyspng
 from elias.util.io import resize_img
 
+import nirhead.data.static_attributes as stat
+
 
 class ClassificationDataSet:
     def __init__(self, root, resolution=None, mode=None, labelclasses=None, subdir="", flip=False, inference=False):
@@ -40,6 +42,9 @@ class ClassificationDataSet:
             for file in self.images:
                 file = file.replace("\\", "/")
                 assert(file in labeldata.keys())
+                if self.labelclasses is None:
+                    self.labelclasses = stat.normalize_attributes_list(labeldata[file].keys())
+                    
                 l = [float(labeldata[file][cl]) for cl in self.labelclasses if cl in labeldata[file].keys()]
                 assert(len(l) == len(self.labelclasses))
                 self.labels.append(np.array(l, dtype=np.float32))
