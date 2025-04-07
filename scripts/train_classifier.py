@@ -111,8 +111,9 @@ def train_step(data_loader, model, optimizer, static_attributes, device, pbar):
     train_loss, train_acc, train_rmse, train_bce = 0.0, 0.0, 0.0, 0.0
 
     for batch, (x, y) in enumerate(data_loader):
+        print(x[0,0])
         x, y = x.to(device), y.to(device)
-
+        
         y_pred = model(x)
 
         loss = stat.attributes_loss(y_pred, y, static_attributes)
