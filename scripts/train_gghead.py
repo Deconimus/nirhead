@@ -584,7 +584,7 @@ def main(
                 lambda_tv_uv_rendering=lambda_tv_uv_rendering,
                 tv_uv_include_transparent_gaussians=tv_uv_include_transparent_gaussians,
                 lambda_beta_loss=lambda_beta_loss,
-                lambda_classifier_loss=lambda_classifier,
+                lambda_classifier_loss=(lambda_classifier if overwrite_lambda_classifier is None else overwrite_lambda_classifier),
 
                 reg_gaussian_position_above=0.1,
                 reg_gaussian_position_below=-0.1,

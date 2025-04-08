@@ -24,6 +24,8 @@ _types_indices = { attr.name: idx for idx, attr in enumerate(types_list) }
 
 default_attribute_lambdas = None # { attr.name: 1.0 for attr in types_list }
 
+BRIGHTPUPIL_EYEOPEN_THRESHOLD = 0.3
+
 
 def attributes_loss(attr_pred: torch.Tensor,
                     attr_truth: torch.Tensor,
@@ -66,7 +68,7 @@ def attributes_loss(attr_pred: torch.Tensor,
     return binary_loss + discrete_loss
 
 
-def take_from_attribute_tensor(attributes_tensor_src, static_attributes_src, static_attributes_dst):
+def take_from_attribute_tensor(attributes_tensor_src: torch.Tensor, static_attributes_src: List[str], static_attributes_dst: List[str]):
     if static_attributes_src == static_attributes_dst:
         return attributes_tensor_src
     assert (all([(attr in static_attributes_src) for attr in static_attributes_dst]))
@@ -117,21 +119,23 @@ def random_attribute_tensor(static_attributes: List[str], size: int = 1, device:
         high = types[attr].high
         
         if types[attr].dtype == bool:
-            t = (torch.rand(shape, device=device, dtype=torch.float32) + 0.5).int().float()  # .bool().float() is buggy
+            t = (torch.rand(shape, dtype=torch.float32) + 0.5).int().float()  # .bool().float() is buggy
         elif types[attr].dtype == int:
             l = int(low) if low is not None else int(-(2 ** 31))
             h = int(high) if low is not None else int((2 ** 31) - 1)
-            t = torch.randint(l, h + 1, shape, device=device, dtype=torch.int32)
+            t = torch.randint(l, h + 1, shape, dtype=torch.int32)
         elif types[attr].dtype == float:
             if low is not None and high is not None:
-                t = torch.rand(shape, device=device, dtype=torch.float32) * (high - low) + low
+                t = torch.rand(shape, dtype=torch.float32) * (high - low) + low
             else:
-                t = torch.randn(shape, device=device, dtype=torch.float32)
+                t = torch.randn(shape, dtype=torch.float32)
                 if low is not None or high is not None:
                     t = torch.clamp(t, min=low, max=high)
         else:
             raise NotImplementedError(f"{types[attr].dtype} not supported!")
         tensors.append(t)
+    
+    ensure_logical_constraints(tensors, static_attributes)
     
     tensor = torch.cat(tensors, dim=1)
     if size <= 1:
@@ -141,6 +145,15 @@ def random_attribute_tensor(static_attributes: List[str], size: int = 1, device:
     return tensor
 
 
+def ensure_logical_constraints(tensors: List[torch.Tensor], static_attributes: List[str]):
+    attr_idx = { key: idx for idx, key in enumerate(static_attributes) }
+    
+    # ensure eye_open values are high enough to enable sensible bright_pupil generation where needed
+    if "eye_open" in attr_idx.keys() and "bright_pupil" in attr_idx.keys():
+        bp_indices = tensors[attr_idx["bright_pupil"]] >= 0.999
+        tensors[attr_idx["eye_open"]][bp_indices] = tensors[attr_idx["eye_open"]][bp_indices] * (1.0 - BRIGHTPUPIL_EYEOPEN_THRESHOLD) + BRIGHTPUPIL_EYEOPEN_THRESHOLD
+        
+        
 def attributes_dim(static_attributes: Optional[List[str]]):
     if static_attributes is None:
         return 0
