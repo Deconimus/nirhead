@@ -101,7 +101,7 @@ def main(args):
         
         labels_gt = {}
         with open(pathlib.Path(args.eval[1]), "r") as f:
-            labels_gt = json.load(f)
+            labels_gt = json.load(f)["labels"]
         labels_pred = predict_labels(model, dl_eval, label_classes, device, args.batch_size)
         
         evaluate_accuracy(gt=labels_gt, pred=labels_pred, filter=False)
@@ -111,7 +111,6 @@ def train_step(data_loader, model, optimizer, static_attributes, device, pbar):
     train_loss, train_acc, train_rmse, train_bce = 0.0, 0.0, 0.0, 0.0
 
     for batch, (x, y) in enumerate(data_loader):
-        print(x[0,0])
         x, y = x.to(device), y.to(device)
         
         y_pred = model(x)
