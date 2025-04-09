@@ -80,12 +80,25 @@ def main(args):
             grid_attr[:,0] = 1.0 if args.bright_pupil else 0.0
         
         if args.attribute_gradient:
-            for row in range(grid_size[1] // 2):
-                for col in range(grid_size[0]):
-                    grid_z[(row*2+1)*grid_size[0] + col, :] = grid_z[(row*2)*grid_size[0] + col, :]
-                    grid_c[(row*2+1)*grid_size[0] + col, :] = grid_c[(row*2)*grid_size[0] + col, :]
-                    grid_attr[(row*2)*grid_size[0] + col, 0] = 0.0
-                    grid_attr[(row*2+1)*grid_size[0] + col, 0] = 1.0
+            attr_indices = { key: idx for idx, key in enumerate(model._config.static_attributes) }
+            attr_idx = attr_indices[args.attribute_gradient]
+            
+            if stat.types[args.attribute_gradient].dtype == bool:
+                for row in range(grid_size[1] // 2):
+                    for col in range(grid_size[0]):
+                        grid_z[(row*2+1)*grid_size[0] + col, :] = grid_z[(row*2)*grid_size[0] + col, :]
+                        grid_c[(row*2+1)*grid_size[0] + col, :] = grid_c[(row*2)*grid_size[0] + col, :]
+                        grid_attr[(row*2)*grid_size[0] + col, attr_idx]   = 0.0
+                        grid_attr[(row*2+1)*grid_size[0] + col, attr_idx] = 1.0
+            elif stat.types[args.attribute_gradient].dtype == float:
+                for row in range(1, grid_size[1]):
+                    for col in range(grid_size[0]):
+                        grid_z[row*grid_size[0] + col, :] = grid_z[0 + col, :]
+                        grid_c[row*grid_size[0] + col, :] = grid_c[0 + col, :]
+                for row in range(grid_size[1]):
+                    attr_val = (row * (stat.types[args.attribute_gradient].high - stat.types[args.attribute_gradient].low)) / (grid_size[1]-1) + stat.types[args.attribute_gradient].low
+                    for col in range(grid_size[0]):
+                        grid_attr[row*grid_size[0] + col, attr_idx] = attr_val
         
         grid_c = grid_c.split(args.batch)
         grid_z = grid_z.split(args.batch)
