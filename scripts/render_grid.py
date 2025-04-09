@@ -86,15 +86,17 @@ def main(args):
             if stat.types[args.attribute_gradient].dtype == bool:
                 for row in range(grid_size[1] // 2):
                     for col in range(grid_size[0]):
-                        grid_z[(row*2+1)*grid_size[0] + col, :] = grid_z[(row*2)*grid_size[0] + col, :]
-                        grid_c[(row*2+1)*grid_size[0] + col, :] = grid_c[(row*2)*grid_size[0] + col, :]
+                        grid_z[(row*2+1)*grid_size[0] + col, :] = grid_z[(row*2)*grid_size[0] + col, :] # copy z vals
+                        grid_c[(row*2+1)*grid_size[0] + col, :] = grid_c[(row*2)*grid_size[0] + col, :] # copy c vals
+                        grid_attr[(row*2+1)*grid_size[0] + col, :] = grid_attr[(row*2)*grid_size[0] + col, :] # copy attr vals
                         grid_attr[(row*2)*grid_size[0] + col, attr_idx]   = 0.0
                         grid_attr[(row*2+1)*grid_size[0] + col, attr_idx] = 1.0
             elif stat.types[args.attribute_gradient].dtype == float:
                 for row in range(1, grid_size[1]):
                     for col in range(grid_size[0]):
-                        grid_z[row*grid_size[0] + col, :] = grid_z[0 + col, :]
-                        grid_c[row*grid_size[0] + col, :] = grid_c[0 + col, :]
+                        grid_z[row*grid_size[0] + col, :] = grid_z[0 + col, :] # copy z vals
+                        grid_c[row*grid_size[0] + col, :] = grid_c[0 + col, :] # copy c vals
+                        grid_attr[row*grid_size[0] + col, :] = grid_attr[0 + col, :] # copy attr vals
                 for row in range(grid_size[1]):
                     attr_val = (row * (stat.types[args.attribute_gradient].high - stat.types[args.attribute_gradient].low)) / (grid_size[1]-1) + stat.types[args.attribute_gradient].low
                     for col in range(grid_size[0]):
