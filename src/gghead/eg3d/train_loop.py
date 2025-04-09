@@ -39,7 +39,7 @@ from gghead.util.metrics import fid100, fid1k, fid50k_full, fid10k
 from gghead.env import GGHEAD_MODELS_PATH
 
 from nirhead.models.classifier import ClassifierConfig, load_classification_model
-
+import nirhead.data.static_attributes as stat
 
 # ----------------------------------------------------------------------------
 
@@ -530,7 +530,7 @@ def training_loop(
         save_image_grid(images, os.path.join(run_dir, 'reals.png'), drange=[0, 255], grid_size=grid_size)
         grid_z = torch.randn([labels.shape[0], G.z_dim], device=device).split(batch_gpu)
         grid_c = torch.from_numpy(labels).to(device).split(batch_gpu)
-        grid_attr = (torch.rand([labels.shape[0], attr_dim], dtype=torch.float32) + 0.5).int().float().to(device).split(batch_gpu)
+        grid_attr = stat.random_attribute_tensor(model_config.static_attributes, labels.shape[0], device).split(batch_gpu)
     
     # Initialize logs.
     if rank == 0:
@@ -616,9 +616,7 @@ def training_loop(
             
             all_gen_attr = None
             if training_set._has_static_attributes():
-                # TODO: this will need to be refactored, once we add non-binary attributes
-                all_gen_attr = (torch.rand([len(phases) * batch_size, attr_dim], dtype=torch.float32) + 0.5).int().float()
-                all_gen_attr = all_gen_attr.to(device)
+                all_gen_attr = stat.random_attribute_tensor(model_config.static_attributes, len(phases) * batch_size, device)
                 all_gen_attr = [phase_gen_attr.split(batch_gpu) for phase_gen_attr in all_gen_attr.split(batch_size)]
             else:
                 all_gen_attr = [([None] * len(phase_real_c)) for _ in all_gen_c]

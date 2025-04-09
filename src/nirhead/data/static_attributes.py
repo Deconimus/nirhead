@@ -32,6 +32,8 @@ def attributes_loss(attr_pred: torch.Tensor,
                     static_attributes: List[str],
                     #attribute_lambdas: Optional[List[float]] = default_attribute_lambdas
                     ):
+    assert(attr_pred.shape == attr_truth.shape)
+    
     num_attributes = len(static_attributes)
     num_binary_attributes = get_num_binary_attributes(static_attributes)
     
@@ -72,24 +74,19 @@ def take_from_attribute_tensor(attributes_tensor_src: torch.Tensor, static_attri
     if static_attributes_src == static_attributes_dst:
         return attributes_tensor_src
     assert (all([(attr in static_attributes_src) for attr in static_attributes_dst]))
-    attr_dim_dst = attributes_dim(static_attributes_dst)
     
-    attr_offsets_src = {}
+    attr_tensors_src = {}
     idx_offset = 0
     for attr in static_attributes_src:
-        attr_offsets_src[attr] = idx_offset
+        attr_tensors_src[attr] = attributes_tensor_src[:,idx_offset:idx_offset+types[attr].dim]
         idx_offset += types[attr].dim
+        
+    attr_tensors_dst = [attr_tensors_src[attr] for attr in static_attributes_dst]
     
-    attr_indices = []
-    for attr in static_attributes_dst:
-        for i in range(types[attr].dim):
-            attr_indices.append(attr_offsets_src[attr] + i)
-    assert (len(attr_indices) == attr_dim_dst)
+    if len(attr_tensors_dst) == 1:
+        return attr_tensors_dst[0].to(attributes_tensor_src.device)
     
-    idx = torch.tensor(attr_indices, device=attributes_tensor_src.device, dtype=torch.long)
-    idx = idx.reshape((1, -1)).repeat((attributes_tensor_src.shape[0], 1))
-    
-    return torch.take_along_dim(attributes_tensor_src, idx, dim=1)
+    return torch.cat(attr_tensors_dst, dim=1).to(attributes_tensor_src.device)
 
     
 def take_binary_from_attribute_tensor(attr_tensor: torch.Tensor, static_attributes: List[str]):

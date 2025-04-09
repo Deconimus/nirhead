@@ -191,7 +191,7 @@ class GGHeadStyleGAN2Loss(StyleGAN2Loss):
                 img = img.repeat(repeats=(1,3,1,1))
         
         y = self.C(img)
-        y = self.C.get_attribute_tensor(y, self.static_attributes) # filter labels, as the Classifier might have more inherent labels than just our static_attributes
+        y = self.C.get_attribute_tensor(y, self.static_attributes) # filter attributes, as the Classifier might have more attributes internally than just our static_attributes
         
         return y
 
@@ -407,7 +407,7 @@ class GGHeadStyleGAN2Loss(StyleGAN2Loss):
                         loss_Gmain = loss_Gmain + self._config.lambda_tv_uv_rendering * reg_tv_uv_rendering
                         
                     if self._config.lambda_classifier_loss > 0 and self.C and len(self.static_attributes) > 0:
-                        attr_pred = self.C.get_attribute_tensor(self.run_C(gen_img.images), self.static_attributes)
+                        attr_pred = self.run_C(gen_img.images)
                         classifier_loss = stat.attributes_loss(attr_pred, gen_attr, self.static_attributes)
                         self._logger_bundle.log_metrics({
                             'Loss/G/classifier_loss': classifier_loss

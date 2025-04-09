@@ -67,7 +67,7 @@ def main(args):
                 print(f"Train loss goal reached, stopping training at train_loss={train_loss}")
                 break
             if (epoch+1) % 100 == 0 and args.logdir:
-                save_log(data, args.logdir, name)
+                save_log(data, pathlib.Path(args.logdir), name)
     except KeyboardInterrupt:
         print("KeyboardInterrupt: cancelling further training, saving logs.")
 
