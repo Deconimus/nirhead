@@ -3,6 +3,7 @@ import torchvision
 import numpy as np
 from eg3d.training.dataset import pyspng
 from elias.util.io import resize_img
+from copy import deepcopy
 
 import nirhead.data.static_attributes as stat
 
@@ -44,9 +45,19 @@ class ClassificationDataSet:
                 assert(file in labeldata.keys())
                 if self.labelclasses is None:
                     self.labelclasses = stat.normalize_attributes_list(labeldata[file].keys())
+                
+                l = []
+                for cl in [c for c in self.labelclasses if c in labeldata[file].keys()]:
+                    assert(len(labeldata[file][cl]) == stat.types[cl].dim)
+                    if len(labeldata[file][cl]) > 1:
+                        for cl_i in range(len(labeldata[file][cl])):
+                            l.append(float(labeldata[file][cl][cl_i]))
+                    elif len(labeldata[file][cl]) == 1:
+                        l.append(float(labeldata[file][cl]))
+                    else:
+                        raise ValueError(f"Empty label-data in labels.json at key [{file}][{cl}]")
                     
-                l = [float(labeldata[file][cl]) for cl in self.labelclasses if cl in labeldata[file].keys()]
-                assert(len(l) == len(self.labelclasses))
+                assert(len(l) == stat.attributes_dim(self.labelclasses))
                 self.labels.append(np.array(l, dtype=np.float32))
 
         assert(self.inference or len(self.images) == len(self.labels))
@@ -65,7 +76,12 @@ class ClassificationDataSet:
         if self.inference:
             return img
 
-        label = self.labels[idx]
+        label = deepcopy(self.labels[idx])
+        
+        if flip and "gaze" in self.labelclasses:
+            attr_idx = stat.attribute_indices(self.labelclasses)["gaze"]
+            label[attr_idx + 1] = -label[attr_idx + 1]
+        
         return img, label
 
     def get_image_path(self, idx):

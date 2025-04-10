@@ -80,7 +80,7 @@ def main(args):
             grid_attr[:,0] = 1.0 if args.bright_pupil else 0.0
         
         if args.attribute_gradient:
-            attr_indices = { key: idx for idx, key in enumerate(model._config.static_attributes) }
+            attr_indices = stat.attribute_indices(model._config.static_attributes)
             attr_idx = attr_indices[args.attribute_gradient]
             
             if stat.types[args.attribute_gradient].dtype == bool:

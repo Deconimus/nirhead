@@ -1,3 +1,4 @@
+import math
 import torch
 import numpy as np
 from typing import List, Optional
@@ -16,8 +17,9 @@ class StaticAttributeTypeInfo:
 
 types_list = [
     StaticAttributeTypeInfo("bright_pupil", "bp", bool,  1),
-    StaticAttributeTypeInfo("glasses",      "g",  bool,  1),
+    StaticAttributeTypeInfo("glasses",      "gl", bool,  1),
     StaticAttributeTypeInfo("eye_open",     "eo", float, 1, low=0.0, high=1.0),
+    StaticAttributeTypeInfo("gaze",         "gz", float, 2, low=(-math.tau/4), high=(math.tau/4)),
 ]
 types = { attr.name: attr for attr in types_list }
 _types_indices = { attr.name: idx for idx, attr in enumerate(types_list) }
@@ -156,6 +158,10 @@ def attributes_dim(static_attributes: Optional[List[str]]):
         return 0
     return sum([types[attr].dim for attr in static_attributes])
 
+
+def attribute_indices(static_attributes: List[str]):
+    indices = { static_attributes[i]: sum([types[static_attributes[j]] for j in range(i)]) for i in range(len(static_attributes)) }
+    return indices
 
 def normalize_attributes_list(static_attributes: Optional[List[str]]):
     if static_attributes is None:
