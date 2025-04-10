@@ -161,7 +161,7 @@ def training_loop(
     dataset_config = experiment_config.dataset_config
     model_config = experiment_config.model_config
     
-    attr_dim = len(model_config.static_attributes) if model_config.static_attributes else 0
+    attr_dim = stat.attributes_dim(model_config.static_attributes)
     
     # ----------------------------------------------------------
     # Create Model manager

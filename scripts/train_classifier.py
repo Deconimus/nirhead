@@ -242,7 +242,7 @@ if __name__ == "__main__":
     parser.add_argument("--epilogue", action="store_true", default=False)
     
     parser.add_argument("--patch_size", type=int, default=16)
-    parser.add_argument("--vit_mlp_dim", type=int, default=None)
+    parser.add_argument("--vit_mlp_dim", type=int, default=1024)
     parser.add_argument("--vit_dim", type=int, default=None)
     parser.add_argument("--vit_depth", type=int, default=4)
     parser.add_argument("--vit_heads", type=int, default=8)
