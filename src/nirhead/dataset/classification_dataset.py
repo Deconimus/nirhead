@@ -33,7 +33,7 @@ class ClassificationDataSet:
         if self._type == "zip":
             self.images = [f for f in self._get_zipfile().namelist() if f.replace("\\", "/").startswith((self.subdir+"/" if self.subdir else "")) and f.endswith(".png")]
         else:
-            self.images = [str(f.absolute())[len(str(self.root.absolute()))+1:] for f in (self.root / self.subdir).rglob("*.png")]
+            self.images = [str(f.absolute())[len(str(self.root.absolute()))+1:].replace("\\", "/") for f in (self.root / self.subdir).rglob("*.png")]
 
         labeldata = {}
         if not self.inference:
