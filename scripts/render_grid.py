@@ -59,7 +59,7 @@ def main(args):
         subgrids_x = clamp(args.subgrids_x, 1, grid_size[0])
         subgrids_y = clamp(args.subgrids_y, 1, grid_size[1])
         
-        with tqdm(total=grid_size[0]*grid_size[1]) as pbar:
+        with tqdm(total=grid_size[0]*grid_size[1] // args.batch) as pbar:
             if args.subgrids_x > 1 or args.subgrids_y > 1:
                 subgrid_size = (grid_size[0] // subgrids_x, grid_size[1] // subgrids_y)
                 img_grid = PIL.Image.new("L", size=(grid_size[0] * args.res, grid_size[1] * args.res))
