@@ -109,7 +109,7 @@ def take_binary_from_attribute_tensor(attr_tensor: torch.Tensor, static_attribut
     return torch.take_along_dim(attr_tensor, idx, dim=1)
 
 
-def random_attribute_tensor(static_attributes: List[str], size: int = 1, device: Optional[str] = None):
+def random_attribute_tensor(static_attributes: List[str], size: int = 1, device: Optional[str] = None, rng: Optional[torch.Generator] = None):
     tensors = []
     
     for attr in static_attributes:
@@ -118,16 +118,16 @@ def random_attribute_tensor(static_attributes: List[str], size: int = 1, device:
         high = types[attr].high
         
         if types[attr].dtype == bool:
-            t = (torch.rand(shape, dtype=torch.float32) + 0.5).int().float()  # .bool().float() is buggy
+            t = (torch.rand(shape, dtype=torch.float32, generator=rng, device=rng.device) + 0.5).int().float()  # .bool().float() is buggy
         elif types[attr].dtype == int:
             l = int(low) if low is not None else int(-(2 ** 31))
             h = int(high) if low is not None else int((2 ** 31) - 1)
-            t = torch.randint(l, h + 1, shape, dtype=torch.int32)
+            t = torch.randint(l, h + 1, shape, dtype=torch.int32, generator=rng, device=rng.device)
         elif types[attr].dtype == float:
             if low is not None and high is not None:
-                t = torch.rand(shape, dtype=torch.float32) * (high - low) + low
+                t = torch.rand(shape, dtype=torch.float32, generator=rng, device=rng.device) * (high - low) + low
             else:
-                t = torch.randn(shape, dtype=torch.float32)
+                t = torch.randn(shape, dtype=torch.float32, generator=rng, device=rng.device)
                 if low is not None or high is not None:
                     t = torch.clamp(t, min=low, max=high)
         else:

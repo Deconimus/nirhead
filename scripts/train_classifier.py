@@ -35,6 +35,8 @@ def main(args):
     model_cfg = classifier.ClassifierConfig.from_dict(dict(vars(args)))
     model, name = classifier.load_classification_model(model_cfg, device)
     
+    model_class_concat = "_".join([stat.types[l].short for l in label_classes])
+    
     optimizer = torch.optim.Adam(params=model.parameters(), lr=0.0001)
 
     train_time_start = timer()
@@ -67,7 +69,7 @@ def main(args):
                 print(f"Train loss goal reached, stopping training at train_loss={train_loss}")
                 break
             if (epoch+1) % 100 == 0 and args.logdir:
-                save_log(data, pathlib.Path(args.logdir), name)
+                save_log(data, pathlib.Path(args.logdir) / model_class_concat, name)
     except KeyboardInterrupt:
         print("KeyboardInterrupt: cancelling further training, saving logs.")
 
@@ -75,8 +77,6 @@ def main(args):
     print(f"Train time on {device}: {(train_time_end-train_time_start):.2f}s")
     print(f"Best test accuracy: {max(data['test_acc'])} (epoch {data['test_acc'].index(max(data['test_acc']))})")
 
-    model_class_concat = "_".join([stat.types[l].short for l in label_classes])
-    
     if args.logdir:
         save_log(data, pathlib.Path(args.logdir) / model_class_concat, name)
 
