@@ -23,6 +23,7 @@ types_list = [
 ]
 types = { attr.name: attr for attr in types_list }
 _types_indices = { attr.name: idx for idx, attr in enumerate(types_list) }
+_types_short_lookup = { attr.short: attr.name for attr in types_list }
 
 default_attribute_lambdas = None # { attr.name: 1.0 for attr in types_list }
 
@@ -167,7 +168,8 @@ def attribute_indices(static_attributes: List[str]):
 def normalize_attributes_list(static_attributes: Optional[List[str]]):
     if static_attributes is None:
         return None
-    attrs = [attr.lower().strip() for attr in static_attributes]
+    f = lambda s: _types_short_lookup[s] if s not in types.keys() and s in _types_short_lookup.keys() else s
+    attrs = [f(attr.strip().lower()) for attr in static_attributes]
     attrs.sort(key=lambda x: _types_indices[x])
     return attrs
 
