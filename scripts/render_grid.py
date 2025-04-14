@@ -33,7 +33,8 @@ def main(args):
     
     model_manager = find_model_manager(args.model)
     model_short = args.model[:args.model.index("_")]
-    grid_opts_name_str = '_' + stat.types[args.attribute_gradient].short + '_grad' if args.attribute_gradient is not None else ''
+    attribute_gradient = stat.normalize_attributes_list(args.attribute_gradient)[0] if args.attribute_gradient is not None else None
+    grid_opts_name_str = '_' + stat.types[attribute_gradient].short + '_grad' if attribute_gradient is not None else ''
     
     for chk in chkpoints:
         checkpoint = model_manager._resolve_checkpoint_id(chk)
@@ -65,15 +66,15 @@ def main(args):
                 img_grid = PIL.Image.new("L", size=(grid_size[0] * args.res, grid_size[1] * args.res))
                 for y in range(subgrids_y):
                     for x in range(subgrids_x):
-                        img = render_grid(model, subgrid_size, rng, dataset, args, pbar)
+                        img = render_grid(model, subgrid_size, attribute_gradient, dataset, rng, args, pbar)
                         img_grid.paste(img, box=(x * subgrid_size[0] * args.res, y * subgrid_size[1] * args.res))
             else:
-                img_grid = render_grid(model, grid_size, rng, dataset, args, pbar)
+                img_grid = render_grid(model, grid_size, attribute_gradient, dataset, rng, args, pbar)
         img_grid.save(dst_file)
         print(dst_file)
     
 
-def render_grid(model, grid_size, rng, dataset, args, pbar):
+def render_grid(model, grid_size, attribute_gradient, dataset, rng, args, pbar):
     # Load c poses from dataset if provided:
     if dataset:
         c_list = [dataset.get_label(idx) for idx in range(len(dataset))]
@@ -97,14 +98,14 @@ def render_grid(model, grid_size, rng, dataset, args, pbar):
     if args.bright_pupil is not None:
         grid_attr[:, 0] = 1.0 if args.bright_pupil else 0.0
     
-    if args.attribute_gradient:
+    if attribute_gradient:
         attr_indices = stat.attribute_indices(model._config.static_attributes)
         
-        grad_attr_idx = attr_indices[args.attribute_gradient]
-        grad_attr_dim = stat.types[args.attribute_gradient].dim
-        grad_fun = lambda x, size: (x * (stat.types[args.attribute_gradient].high - stat.types[args.attribute_gradient].low)) / (size - 1) + stat.types[args.attribute_gradient].low
+        grad_attr_idx = attr_indices[attribute_gradient]
+        grad_attr_dim = stat.types[attribute_gradient].dim
+        grad_fun = lambda x, size: (x * (stat.types[attribute_gradient].high - stat.types[attribute_gradient].low)) / (size - 1) + stat.types[attribute_gradient].low
         
-        if stat.types[args.attribute_gradient].dtype == bool:
+        if stat.types[attribute_gradient].dtype == bool:
             for row in range(grid_size[1] // 2):
                 for col in range(grid_size[0]):
                     grid_z[(row * 2 + 1) * grid_size[0] + col, :] = grid_z[(row * 2) * grid_size[0] + col, :]  # copy z vals
@@ -112,7 +113,7 @@ def render_grid(model, grid_size, rng, dataset, args, pbar):
                     grid_attr[(row * 2 + 1) * grid_size[0] + col, :] = grid_attr[(row * 2) * grid_size[0] + col, :]  # copy attr vals
                     grid_attr[(row * 2) * grid_size[0] + col, grad_attr_idx] = 0.0
                     grid_attr[(row * 2 + 1) * grid_size[0] + col, grad_attr_idx] = 1.0
-        elif stat.types[args.attribute_gradient].dtype == float:
+        elif stat.types[attribute_gradient].dtype == float:
             for row in range(1 if grad_attr_dim <= 1 else 0, grid_size[1]):
                 for col in range(grid_size[0]):
                     src_col = col if grad_attr_dim <= 1 else 0
@@ -170,7 +171,7 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=136)
     parser.add_argument("--no_seed", action="store_true", default=False)
     parser.add_argument("--bright_pupil", type=bool, default=None)
-    parser.add_argument("--attribute_gradient", type=str, default=None) # grid acts as gradient over given attribute
+    parser.add_argument("--attribute_gradient", type=str, nargs="+", default=None) # grid acts as gradient over given attribute
     parser.add_argument("--subgrids_x", type=int, default=1)
     parser.add_argument("--subgrids_y", type=int, default=1)
     args = parser.parse_args()

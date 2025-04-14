@@ -162,7 +162,7 @@ def attributes_dim(static_attributes: Optional[List[str]]):
 
 
 def attribute_indices(static_attributes: List[str]):
-    indices = { static_attributes[i]: sum([types[static_attributes[j]] for j in range(i)]) for i in range(len(static_attributes)) }
+    indices = { static_attributes[i]: sum([types[static_attributes[j]].dim for j in range(i)]) for i in range(len(static_attributes)) }
     return indices
 
 def normalize_attributes_list(static_attributes: Optional[List[str]]):

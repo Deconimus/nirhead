@@ -80,7 +80,7 @@ class ClassificationDataSet:
         
         if flip and "gaze" in self.labelclasses:
             attr_idx = stat.attribute_indices(self.labelclasses)["gaze"]
-            label[attr_idx + 1] = -label[attr_idx + 1]
+            label[attr_idx + 1] *= -1.0
         
         return img, label
 
