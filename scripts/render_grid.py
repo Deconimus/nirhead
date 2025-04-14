@@ -79,7 +79,7 @@ def render_grid(model, grid_size, attribute_gradient, dataset, rng, args, pbar):
     if dataset:
         c_list = [dataset.get_label(idx) for idx in range(len(dataset))]
         random.shuffle(c_list)
-        grid_c = torch.from_numpy(np.stack(c_list, 0)).to(device)
+        grid_c = torch.from_numpy(np.stack(c_list[:grid_size[0]*grid_size[1]], 0)).to(device)
     else:
         pose_front = Pose(
             matrix_or_rotation=np.eye(3),
@@ -126,8 +126,15 @@ def render_grid(model, grid_size, attribute_gradient, dataset, rng, args, pbar):
                     grid_attr[row * grid_size[0] + col, grad_attr_idx] = attr_val_y
                     if grad_attr_dim > 1:
                         attr_val_x = grad_fun(col, grid_size[0])
+                        if attribute_gradient == "gaze":
+                            attr_val_x *= -1.0
                         grid_attr[row * grid_size[0] + col, grad_attr_idx + 1] = attr_val_x
                         #print(f"pitch={attr_val_y}, yaw={attr_val_x}")
+    
+    if args.horizontal:
+        grid_c    = torch.reshape(torch.transpose(torch.reshape(grid_c,    (grid_size[1], grid_size[0], grid_c.shape[1])),    0, 1), (grid_size[0] * grid_size[1], -1))
+        grid_z    = torch.reshape(torch.transpose(torch.reshape(grid_z,    (grid_size[1], grid_size[0], grid_z.shape[1])),    0, 1), (grid_size[0] * grid_size[1], -1))
+        grid_attr = torch.reshape(torch.transpose(torch.reshape(grid_attr, (grid_size[1], grid_size[0], grid_attr.shape[1])), 0, 1), (grid_size[0] * grid_size[1], -1))
     
     grid_c = grid_c.split(args.batch)
     grid_z = grid_z.split(args.batch)
@@ -174,6 +181,7 @@ if __name__ == "__main__":
     parser.add_argument("--attribute_gradient", type=str, nargs="+", default=None) # grid acts as gradient over given attribute
     parser.add_argument("--subgrids_x", type=int, default=1)
     parser.add_argument("--subgrids_y", type=int, default=1)
+    parser.add_argument("--horizontal", action="store_true", default=False)
     args = parser.parse_args()
     
     main(args)
