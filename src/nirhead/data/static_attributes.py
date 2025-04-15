@@ -111,6 +111,9 @@ def take_binary_from_attribute_tensor(attr_tensor: torch.Tensor, static_attribut
 
 
 def random_attribute_tensor(static_attributes: List[str], size: int = 1, device: Optional[str] = None, rng: Optional[torch.Generator] = None):
+    if static_attributes is None:
+        return torch.tensor([], device=device)
+    
     tensors = []
     rng_device = rng.device if rng is not None else device
     

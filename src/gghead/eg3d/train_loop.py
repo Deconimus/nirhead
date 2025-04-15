@@ -530,7 +530,10 @@ def training_loop(
         save_image_grid(images, os.path.join(run_dir, 'reals.png'), drange=[0, 255], grid_size=grid_size)
         grid_z = torch.randn([labels.shape[0], G.z_dim], device=device).split(batch_gpu)
         grid_c = torch.from_numpy(labels).to(device).split(batch_gpu)
-        grid_attr = stat.random_attribute_tensor(model_config.static_attributes, labels.shape[0], device).split(batch_gpu)
+        if model_config.static_attributes is not None:
+            grid_attr = stat.random_attribute_tensor(model_config.static_attributes, labels.shape[0], device).split(batch_gpu)
+        else:
+            grid_attr = [None] * (labels.shape[0] // batch_gpu)
     
     # Initialize logs.
     if rank == 0:
@@ -597,15 +600,16 @@ def training_loop(
         
         # Fetch training data.
         with torch.autograd.profiler.record_function('data_fetch'):
-            phase_real_img, phase_real_c, phase_real_attr = next(training_set_iterator)
+            phase_real_img, phase_real_c = next(training_set_iterator)
             phase_real_img = (phase_real_img.to(device).to(torch.float32) / 127.5 - 1).split(batch_gpu)
             phase_real_c = phase_real_c.to(device).split(batch_gpu)
+            phase_real_attr = [None] * len(phase_real_c)
             
             # TODO: we actually don't need phase_real_attr right now, since we don't use it for the discriminator and are not yet training the classifier
-            if training_set._has_static_attributes():
-                phase_real_attr = phase_real_attr.to(device).split(batch_gpu)
-            else:
-                phase_real_attr = [None] * len(phase_real_c)
+            #if training_set._has_static_attributes():
+            #    phase_real_attr = phase_real_attr.to(device).split(batch_gpu)
+            #else:
+            #    phase_real_attr = [None] * len(phase_real_c)
             
             all_gen_z = torch.randn([len(phases) * batch_size, G.z_dim], device=device)
             all_gen_z = [phase_gen_z.split(batch_gpu) for phase_gen_z in all_gen_z.split(batch_size)]
