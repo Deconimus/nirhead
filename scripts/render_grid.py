@@ -157,7 +157,7 @@ def render_grid(model, grid_size, attribute_gradient, dataset, rng, args, pbar):
     
     img_grid = PIL.Image.new("L", size=(grid_size[0] * args.res, grid_size[1] * args.res))
     for idx, img in enumerate(images):
-        img_grid.paste(img, box=((idx % grid_size[0]) * args.res, (idx // grid_size[1]) * args.res))
+        img_grid.paste(img, box=((idx % grid_size[0]) * args.res, (idx // grid_size[0]) * args.res))
     return img_grid
     
 
