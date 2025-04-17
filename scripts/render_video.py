@@ -34,8 +34,8 @@ def main(args):
     model_manager = find_model_manager(args.model)
     model_short = args.model[:args.model.index("_")]
     time_attribute = stat.normalize_attributes_list(args.attribute)[0] if args.attribute is not None else None
-    vid_opts_prefix = "_" + stat.types[time_attribute].short + "_grad" if time_attribute is not None else ""
-    vid_opts_suffix = (f"_seed{args.seed}" if args.seed != 136 else "") + ("_lossy" if args.lossy else "")
+    vid_opts_prefix = "_" + stat.types[time_attribute].short + "_" if time_attribute is not None else ""
+    vid_opts_suffix = f"_{args.cols}_{args.rows}" + (f"_seed{args.seed}" if args.seed != 136 else "") + ("_lossy" if args.lossy else "")
     
     num_frames = args.fps * args.time
     
