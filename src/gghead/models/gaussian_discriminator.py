@@ -5,11 +5,12 @@ import numpy as np
 import torch
 from eg3d.torch_utils.ops import upfirdn2d
 from eg3d.training.dual_discriminator import DualDiscriminator, filtered_resizing
-from eg3d.training.networks_stylegan2 import DiscriminatorBlock, MappingNetwork, DiscriminatorEpilogue
 from elias.config import Config, implicit
 from torch import nn
 
 from gghead.models.gghead_model import MappingNetworkConfig
+
+from nirhead.eg3d.training.networks_stylegan2 import DiscriminatorBlock, MappingNetwork, DiscriminatorEpilogue
 
 
 @dataclass
@@ -18,6 +19,7 @@ class DiscriminatorBlockConfig(Config):
     resample_filter: List[int] = field(default_factory=lambda: [1, 3, 3, 1])  # Low-pass filter to apply when resampling activations.
     fp16_channels_last: bool = False  # Use channels-last memory format with FP16?
     freeze_layers: int = 0  # Freeze-D: Number of layers to freeze.
+    freeze_layers_offset: int = 0 # Freeze-D: Offset for lower layers to freeze.
 
 
 @dataclass
@@ -115,7 +117,6 @@ class GaussianDiscriminator(nn.Module):
             block = DiscriminatorBlock(in_channels, tmp_channels, out_channels, resolution=res,
                                        first_layer_idx=cur_layer_idx, use_fp16=use_fp16, architecture=block_architecture,
                                        **asdict(config.block_config), **common_kwargs)
-            print(config.block_config.freeze_layers) # debug freeze_d freezed
             if is_new_layer:
                 block.conv1.weight.data.zero_()
             setattr(self, f'b{res}', block)

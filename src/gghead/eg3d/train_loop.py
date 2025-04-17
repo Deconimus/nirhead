@@ -387,9 +387,6 @@ def training_loop(
     G.backbone.freeze_lower_layers(experiment_config.train_setup.freeze_g_mapping_layers,
                                    experiment_config.train_setup.freeze_g_synthesis_layers, console_out=True)
     
-    # FreezeD (just for console output here)
-    D.freeze_lower_layers(experiment_config.train_setup.freeze_d, console_out=True)
-    
     # Load Classifier
     C, C_name, classifier_cfg = None, None, None
     if model_config.classifier:
@@ -644,10 +641,6 @@ def training_loop(
             if phase.name in ["Gmain", "Gboth"]:  # , "Greg"]:  # who is Greg?
                 phase.module.backbone.freeze_lower_layers(experiment_config.train_setup.freeze_g_mapping_layers,
                                                           experiment_config.train_setup.freeze_g_synthesis_layers)
-            if phase.name in ["Dreg", "Dboth"]:  # "Dmain" also exists but is apparently not to be fucked with
-                # phase.module.freeze_lower_layers(experiment_config.train_setup.freeze_d)
-                # phase.module.check_freeze_lower_layers(50)
-                pass
             
             for real_img, real_c, real_attr, gen_z, gen_c, gen_attr in zip(phase_real_img, phase_real_c, phase_real_attr, phase_gen_z, phase_gen_c, phase_gen_attr):
                 loss.accumulate_gradients(phase=phase.name, real_img=real_img, real_c=real_c, real_attr=real_attr, gen_z=gen_z, gen_c=gen_c, gen_attr=gen_attr,

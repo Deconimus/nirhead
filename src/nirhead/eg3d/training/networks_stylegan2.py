@@ -647,6 +647,7 @@ class DiscriminatorBlock(torch.nn.Module):
                  use_fp16=False,  # Use FP16 for this block?
                  fp16_channels_last=False,  # Use channels-last memory format with FP16?
                  freeze_layers=0,  # Freeze-D: Number of layers to freeze.
+                 freeze_layers_offset=0,
                  ):
         assert in_channels in [0, tmp_channels]
         assert architecture in ['orig', 'skip', 'resnet']
@@ -666,7 +667,9 @@ class DiscriminatorBlock(torch.nn.Module):
         def trainable_gen():
             while True:
                 layer_idx = self.first_layer_idx + self.num_layers
-                trainable = (layer_idx >= freeze_layers)
+                trainable = (layer_idx >= freeze_layers + freeze_layers_offset or layer_idx < freeze_layers_offset)
+                if not trainable:
+                    print(f"Freeze-D Layer: {layer_idx}")
                 self.num_layers += 1
                 yield trainable
         

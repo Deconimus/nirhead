@@ -1,11 +1,12 @@
 from typing import Optional
-
 import numpy as np
 import torch
+from torch import nn
+
 from eg3d.torch_utils import misc
 from eg3d.torch_utils.ops import upfirdn2d
+
 from nirhead.eg3d.training.networks_stylegan2 import MappingNetwork, SynthesisLayer, ToRGBLayer, Conv2dLayer
-from torch import nn
 
 
 class GGHSynthesisBlock(nn.Module):

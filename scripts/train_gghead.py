@@ -165,6 +165,7 @@ def main(
         n_downsampling_layers: int = 1,
         freeze_generator: bool = False,
         freeze_d_layers: int = 0,
+        freeze_d_layers_offset: int = 0,
         freeze_g_mapping_layers: int = 0,
         freeze_g_synthesis_layers: int = 0,
         smooth_D_intro: bool = True,
@@ -363,6 +364,7 @@ def main(
 
         if freeze_d_layers is not None:
             model_config.discriminator_config.block_config.freeze_layers = freeze_d_layers
+            model_config.discriminator_config.block_config.freeze_layers_offset = freeze_d_layers_offset
 
         dataset_config.path = data
         optimizer_config.loss_config.aug = aug
@@ -512,6 +514,7 @@ def main(
             mapping_network_config=MappingNetworkConfig(),
             block_config=DiscriminatorBlockConfig(
                 freeze_layers = freeze_d_layers,
+                freeze_layers_offset = freeze_d_layers_offset,
             ),
             epilogue_config=DiscriminatorEpilogueConfig(
                 mbstd_group_size = opts.mbstd_group
@@ -619,7 +622,6 @@ def main(
         resume_checkpoint=resume_checkpoint,
         reset_cur_nimg=reset_cur_nimg,
         total_kimg=kimg,
-        freeze_d=freeze_d_layers,
         freeze_g_mapping_layers=freeze_g_mapping_layers,
         freeze_g_synthesis_layers=freeze_g_synthesis_layers,
         train_classifier_after_epochs=train_classifier_after_epochs,
