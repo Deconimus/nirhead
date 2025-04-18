@@ -46,11 +46,11 @@ class GGHeadTrainSetup(Config):
     total_kimg: Optional[int] = 25000
     wandb_run_id: str = implicit()
 
-    freeze_d: int = 0
     freeze_g_mapping_layers: int = 0
     freeze_g_synthesis_layers: int = 0
     
     train_classifier_after_epochs: Optional[int] = None
+    static_attributes_changed: bool = False
 
 
 @dataclass

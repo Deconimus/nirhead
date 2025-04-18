@@ -15,6 +15,8 @@ from gghead.config.gaussian_attribute import GaussianAttribute
 from gghead.models.gghead_model import GGHeadModel
 from gghead.util.logging import LoggerBundle
 
+import nirhead.data.static_attributes as stat
+
 
 @dataclass
 class GGHeadStyleGAN2LossConfig(Config):
@@ -132,14 +134,14 @@ class GGHeadStyleGAN2Loss(StyleGAN2Loss):
                          dual_discrimination=config.dual_discrimination)
 
 
-    def run_G(self, z, c, swapping_prob, neural_rendering_resolution, update_emas=False, **synthesis_kwargs):
+    def run_G(self, z, c, attr, swapping_prob, neural_rendering_resolution, update_emas=False, **synthesis_kwargs):
         if swapping_prob is not None:
             c_swapped = torch.roll(c.clone(), 1, 0)
             c_gen_conditioning = torch.where(torch.rand((c.shape[0], 1), device=c.device) < swapping_prob, c_swapped, c)
         else:
             c_gen_conditioning = torch.zeros_like(c)
 
-        ws = self.G.mapping(z, c_gen_conditioning, update_emas=update_emas)
+        ws = self.G.mapping(z, c_gen_conditioning, attr, update_emas=update_emas)
         gen_output = self.G.synthesis(ws, c, neural_rendering_resolution=neural_rendering_resolution, update_emas=update_emas, **synthesis_kwargs)
         return gen_output, ws
 
@@ -189,7 +191,7 @@ class GGHeadStyleGAN2Loss(StyleGAN2Loss):
                 img = img.repeat(repeats=(1,3,1,1))
         
         y = self.C(img)
-        y = self.C.get_labels_tensor(y, self.static_attributes) # filter labels, as the Classifier might have more inherent labels than just our static_attributes
+        y = self.C.get_attribute_tensor(y, self.static_attributes) # filter attributes, as the Classifier might have more attributes internally than just our static_attributes
         
         return y
 
@@ -291,12 +293,12 @@ class GGHeadStyleGAN2Loss(StyleGAN2Loss):
             with torch.autograd.profiler.record_function('Gmain_forward'):
                 # Proper adversarial loss
                 if isinstance(self.G, GGHeadModel):
-                    gen_img, _gen_ws = self.run_G(gen_z, gen_c, swapping_prob=swapping_prob, neural_rendering_resolution=neural_rendering_resolution,
+                    gen_img, _gen_ws = self.run_G(gen_z, gen_c, gen_attr, swapping_prob=swapping_prob, neural_rendering_resolution=neural_rendering_resolution,
                                                   return_raw_attributes=self._config.requires_raw_gaussian_attributes(),
                                                   alpha_new_layers=alpha_new_layers_gen,
                                                   alpha_plane_resolution=alpha_plane_resolution)
                 else:
-                    gen_img, _gen_ws = self.run_G(gen_z, gen_c, swapping_prob=swapping_prob, neural_rendering_resolution=neural_rendering_resolution)
+                    gen_img, _gen_ws = self.run_G(gen_z, gen_c, gen_attr, swapping_prob=swapping_prob, neural_rendering_resolution=neural_rendering_resolution)
                 gen_logits = self.run_D(gen_img, gen_c, blur_sigma=blur_sigma, alpha_new_layers_disc=alpha_new_layers_disc, effective_res_disc=effective_res_disc)
                 
                 loss_Gmain = torch.nn.functional.softplus(-gen_logits)
@@ -406,15 +408,12 @@ class GGHeadStyleGAN2Loss(StyleGAN2Loss):
                         
                     if self._config.lambda_classifier_loss > 0 and self.C and len(self.static_attributes) > 0:
                         attr_pred = self.run_C(gen_img.images)
-                        attr_gt = torch.ones_like(attr_pred, device=attr_pred.device) # TODO: replace by gen_attr
-                        classifier_loss = torch.nn.functional.binary_cross_entropy_with_logits(attr_pred, attr_gt)
+                        classifier_loss = stat.attributes_loss(attr_pred, gen_attr, self.static_attributes)
                         self._logger_bundle.log_metrics({
                             'Loss/G/classifier_loss': classifier_loss
                         }, step=cur_nimg)
                         loss_Gmain = loss_Gmain + self._config.lambda_classifier_loss * classifier_loss
                         
-                        # TODO: Maybe also run Classifier in Discriminator phases?
-
             with torch.autograd.profiler.record_function('Gmain_backward'):
                 loss_Gmain.mean().mul(gain).backward()
                 gradients_with_nan = [n for n, p in self.G.named_parameters() if p.grad is not None and p.grad.isnan().any()]
@@ -427,10 +426,10 @@ class GGHeadStyleGAN2Loss(StyleGAN2Loss):
         if phase in ['Dmain', 'Dboth']:
             with torch.autograd.profiler.record_function('Dgen_forward'):
                 if isinstance(self.G, GGHeadModel):
-                    gen_img, _gen_ws = self.run_G(gen_z, gen_c, swapping_prob=swapping_prob, neural_rendering_resolution=neural_rendering_resolution,
+                    gen_img, _gen_ws = self.run_G(gen_z, gen_c, gen_attr, swapping_prob=swapping_prob, neural_rendering_resolution=neural_rendering_resolution,
                                                   update_emas=True, alpha_new_layers=alpha_new_layers_gen, alpha_plane_resolution=alpha_plane_resolution)
                 else:
-                    gen_img, _gen_ws = self.run_G(gen_z, gen_c, swapping_prob=swapping_prob, neural_rendering_resolution=neural_rendering_resolution,
+                    gen_img, _gen_ws = self.run_G(gen_z, gen_c, gen_attr, swapping_prob=swapping_prob, neural_rendering_resolution=neural_rendering_resolution,
                                                   update_emas=True)
                 gen_logits = self.run_D(gen_img, gen_c, blur_sigma=blur_sigma, update_emas=True, alpha_new_layers_disc=alpha_new_layers_disc,
                                         effective_res_disc=effective_res_disc)

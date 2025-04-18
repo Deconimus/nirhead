@@ -1,6 +1,8 @@
 import argparse, pathlib, json, os
 import numpy as np
 
+import nirhead.data.static_attributes as stat
+
 
 def main(args):
     gt = {}
@@ -17,7 +19,7 @@ def main(args):
 
 def evaluate_accuracy(gt, pred, labels=None, filter=False, noprint=False):
     if not labels:
-        labels = list(pred[list(pred.keys())[0]].keys())
+        labels = [l for l in pred[list(pred.keys())[0]].keys() if stat.types[l].dtype == bool]
 
     correct, n = 0, 0
     for img in pred.keys():

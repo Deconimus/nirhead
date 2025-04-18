@@ -33,6 +33,8 @@ from gghead.util.mesh import gaussians_to_mesh
 from gghead.util.rotation import axis_angle_to_quaternion
 from gghead.util.uv import gen_tritex
 
+import nirhead.data.static_attributes as stat
+
 
 @dataclass
 class MappingNetworkConfig(Config):
@@ -122,6 +124,9 @@ class GGHeadConfig(Config):
     use_gsm_flame_template: bool = False  # Use template with back removed and more efficient UV layout
     use_flame_template_v2: bool = False
     use_sphere_template: bool = False
+    use_halfsphere_template: bool = False
+    use_halfsphere_inverse_template: bool = False
+    use_eyecrop_template: bool = False
     use_plane_template: bool = False
     use_auxiliary_sphere: bool = False  # Predict additional set of Gaussians in front of face to models microphones, hands, other stuff that occludes the face
     auxiliary_sphere_radius: float = 0.1
@@ -197,6 +202,8 @@ class GGHeadConfig(Config):
     use_masks: bool = False
     fix_alpha_blending: bool = False
     use_cnn_adaptor: bool = False
+    
+    static_attributes: Optional[list] = None
 
     # Maintenance
     maintenance_interval: Optional[int] = None  # How often Gaussians should be densified / pruned
@@ -371,18 +378,19 @@ class GGHeadModel(nn.Module):
         self.z_dim = config.z_dim
         self.c_dim = config.c_dim
         self.w_dim = config.w_dim
-
+        self.attr_dim = stat.attributes_dim(self._config.static_attributes)
+        
         n_backbone_channels = self._n_uv_channels
         if self._config.use_background_cnn:
             n_backbone_channels += self._config.n_background_channels
-
-        self.backbone = GGHStyleGAN2Backbone(self.z_dim, self.c_dim, self.w_dim,
+        
+        self.backbone = GGHStyleGAN2Backbone(self.z_dim, self.c_dim, self.w_dim, self.attr_dim,
                                              img_resolution=self._config.plane_resolution,
                                              pretrained_plane_resolution=self._config.pretrained_plane_resolution,
                                              img_channels=n_backbone_channels,
                                              mapping_kwargs=asdict(config.mapping_network_config),
                                              **asdict(config.synthesis_network_config))
-
+        
         if self._config.use_background_cnn and self._config.use_background_upsampler and self._config.img_resolution > self._config.plane_resolution:
             img_resolution_log2 = int(np.log2(self._config.img_resolution))
             plane_resolution_log2 = int(np.log2(self._config.plane_resolution))
@@ -431,29 +439,33 @@ class GGHeadModel(nn.Module):
         self.neural_rendering_resolution = self._config.neural_rendering_resolution
         self.rendering_config = config.rendering_config
 
-        if config.use_gsm_flame_template:
-            flame_template_mesh = trimesh.load(
-                f"{REPO_ROOT_DIR}/assets/flame_uv_no_back_close_mouth_no_subdivision.obj")
-            uvs_per_flame_vertex = flame_template_mesh.visual.uv
-            uv_coords = uvs_per_flame_vertex
-            uv_faces = flame_template_mesh.faces
-        elif config.use_flame_template_v2:
-            flame_template_mesh = trimesh.load(f"{REPO_ROOT_DIR}/assets/flame_template_v2.obj")
-            uvs_per_flame_vertex = flame_template_mesh.visual.uv
-            uv_coords = uvs_per_flame_vertex
-            uv_faces = flame_template_mesh.faces
-        elif config.use_sphere_template:
+        if config.use_sphere_template:
             flame_template_mesh = trimesh.load(f"{REPO_ROOT_DIR}/assets/sphere_template.obj")
-            uvs_per_flame_vertex = flame_template_mesh.visual.uv
-            uv_coords = uvs_per_flame_vertex
-            uv_faces = flame_template_mesh.faces
+            print("Loaded Sphere Template")
+        elif config.use_halfsphere_template:
+            flame_template_mesh = trimesh.load(f"{REPO_ROOT_DIR}/assets/halfsphere.obj")
+            print("Loaded Halfsphere Template")
+        elif config.use_halfsphere_inverse_template:
+            flame_template_mesh = trimesh.load(f"{REPO_ROOT_DIR}/assets/halfsphere_inverse.obj")
+            print("Loaded Halfsphere-Inverse Template")
         elif config.use_plane_template:
             flame_template_mesh = trimesh.load(f"{REPO_ROOT_DIR}/assets/plane_template.obj")
-            uvs_per_flame_vertex = flame_template_mesh.visual.uv
-            uv_coords = uvs_per_flame_vertex
-            uv_faces = flame_template_mesh.faces
+            print("Loaded Plane Template")
+        elif config.use_eyecrop_template:
+            flame_template_mesh = trimesh.load(f"{REPO_ROOT_DIR}/assets/flame_eyecrop_template.obj")
+            print("Loaded EyeCrop Template")
+        elif config.use_gsm_flame_template:
+            flame_template_mesh = trimesh.load(f"{REPO_ROOT_DIR}/assets/flame_uv_no_back_close_mouth_no_subdivision.obj")
+            print("Loaded GSM_FLAME Template")
+        elif config.use_flame_template_v2:
+            flame_template_mesh = trimesh.load(f"{REPO_ROOT_DIR}/assets/flame_template_v2.obj")
+            print("Loaded FLAMEv2 Template")
         else:
             raise ValueError("No mesh template specified!")
+        
+        uvs_per_flame_vertex = flame_template_mesh.visual.uv
+        uv_coords = uvs_per_flame_vertex
+        uv_faces = flame_template_mesh.faces
 
         vertices = flame_template_mesh.vertices
         faces = flame_template_mesh.faces
@@ -748,20 +760,19 @@ class GGHeadModel(nn.Module):
     # Main forward
     # ==========================================================
 
-    def forward(self, z, c, truncation_psi=1, truncation_cutoff=None, neural_rendering_resolution=None,
-                update_emas=False, cache_backbone=False,
-                use_cached_backbone=False, **synthesis_kwargs):
+    def forward(self, z, c, attr, truncation_psi=1, truncation_cutoff=None, neural_rendering_resolution=None,
+                update_emas=False, cache_backbone=False, use_cached_backbone=False, **synthesis_kwargs):
         # Render a batch of generated images.
-        ws = self.mapping(z, c, truncation_psi=truncation_psi, truncation_cutoff=truncation_cutoff,
+        ws = self.mapping(z, c, attr, truncation_psi=truncation_psi, truncation_cutoff=truncation_cutoff,
                           update_emas=update_emas)
         return self.synthesis(ws, c, update_emas=update_emas, neural_rendering_resolution=neural_rendering_resolution,
                               cache_backbone=cache_backbone,
                               use_cached_backbone=use_cached_backbone, **synthesis_kwargs)
 
-    def mapping(self, z, c, truncation_psi=1, truncation_cutoff=None, update_emas=False):
+    def mapping(self, z, c, attr, truncation_psi=1, truncation_cutoff=None, update_emas=False):
         if self.rendering_config.c_gen_conditioning_zero:
             c = torch.zeros_like(c)
-        return self.backbone.mapping(z, c * self.rendering_config.c_scale, truncation_psi=truncation_psi,
+        return self.backbone.mapping(z, c * self.rendering_config.c_scale, attr=attr, truncation_psi=truncation_psi,
                                      truncation_cutoff=truncation_cutoff,
                                      update_emas=update_emas)
 
@@ -910,7 +921,10 @@ class GGHeadModel(nn.Module):
                               masks=masks)
 
         return output
-
+    
+    def reset_attr_parameters(self):
+        self.backbone.mapping.reset_attr_parameters()
+    
     def _setup_gaussian_model(self, gaussian_attributes: Dict[GaussianAttribute, torch.Tensor],
                               i: int) -> GaussianModel:
         gaussian_positions = gaussian_attributes[GaussianAttribute.POSITION]
@@ -928,7 +942,6 @@ class GGHeadModel(nn.Module):
         self._gaussian_model._rotation = gaussian_rotations[
             i].contiguous()  # Important: Rotation needs to be contiguous!
         self._gaussian_model._opacity = gaussian_opacities[i]
-
         return self._gaussian_model
 
     def _collect_gaussian_attributes(self, attribute_names: List[GaussianAttribute], predictions: torch.Tensor,

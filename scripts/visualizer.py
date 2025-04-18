@@ -2,7 +2,7 @@ from pathlib import Path
 
 import torch
 import tyro
-from eg3d.visualizer import Visualizer
+from nirhead.eg3d.visualizer import Visualizer
 
 from gghead.model_manager.gghead_model_manager import GGHeadModelFolder
 

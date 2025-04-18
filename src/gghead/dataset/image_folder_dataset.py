@@ -1,6 +1,4 @@
-import json
-import os
-import zipfile
+import json, os, zipfile, functools
 from dataclasses import dataclass, replace, asdict
 from pathlib import Path
 from typing import Optional, Tuple, Literal, Union
@@ -188,7 +186,7 @@ class GGHeadImageFolderDataset(Dataset):
             return self._static_attribute_labels
         if not self._config.static_attributes:
             return None
-        fname = "labels.json"
+        fname = "static_attributes.json"
         if not fname in self._all_fnames:
             return None
         with self._open_file(fname) as f:
@@ -203,8 +201,11 @@ class GGHeadImageFolderDataset(Dataset):
         
         raw_idx = int(self._raw_idx[idx])
         img_fname = self._image_fnames[raw_idx]
+        labels = self._load_static_attribute_labels()[img_fname]
         
-        return self._load_static_attribute_labels()[img_fname]
+        list_flatten_reduce = lambda x,y: (x if isinstance(x, list) else [x]) + (y if isinstance(y, list) else [y])
+        attr = np.array([float(x) for x in functools.reduce(list_flatten_reduce, [labels[cls] for cls in self._config.static_attributes], [])], dtype=np.float32)
+        return attr
     
     def _has_static_attributes(self):
         v = self._load_static_attribute_labels() is not None
@@ -280,3 +281,10 @@ class GGHeadMaskImageFolderDataset(Dataset):
 
     def _has_static_attributes(self):
         return self._dataset_images._has_static_attributes()
+    
+    def _static_attributes(self):
+        return self._dataset_images._config.static_attributes.copy()
+    
+    def _get_static_attribute_label(self, idx):
+        return self._dataset_images._get_static_attribute_label(idx)
+    

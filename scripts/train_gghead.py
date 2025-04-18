@@ -1,5 +1,5 @@
 import os, gc, pathlib, tyro
-from typing import Optional, Tuple, Literal
+from typing import Optional, Tuple, Literal, List
 import torch
 from eg3d import dnnlib
 from eg3d.metrics import metric_main
@@ -19,6 +19,7 @@ from gghead.models.gghead_model import GGHeadConfig, MappingNetworkConfig, Synth
 from gghead.util.metrics import fid100, fid1k, fid50k_full, fid10k
 
 from nirhead.models.classifier import ClassifierConfig
+import nirhead.data.static_attributes as stat
 
 
 def main(
@@ -72,6 +73,9 @@ def main(
         use_gsm_flame_template: bool = True,
         use_flame_template_v2: bool = False,
         use_sphere_template: bool = False,
+        use_halfsphere_template: bool = False,
+        use_halfsphere_inverse_template: bool = False,
+        use_eyecrop_template: bool = False,
         use_plane_template: bool = False,
 
         # Gaussian Decoding
@@ -161,6 +165,7 @@ def main(
         n_downsampling_layers: int = 1,
         freeze_generator: bool = False,
         freeze_d_layers: int = 0,
+        freeze_d_layers_offset: int = 0,
         freeze_g_mapping_layers: int = 0,
         freeze_g_synthesis_layers: int = 0,
         smooth_D_intro: bool = True,
@@ -168,7 +173,7 @@ def main(
         smooth_G_intro: bool = True,
         smooth_G_blend: bool = True,
         
-        static_attributes: Optional[list] = None,
+        static_attributes: Optional[List[str]] = None,
         classifier: Optional[str] = None,
         train_classifier_after_epochs: Optional[int] = None,
         
@@ -209,7 +214,10 @@ def main(
     c.G_kwargs = dnnlib.EasyDict()
     c.data_loader_kwargs = dnnlib.EasyDict(pin_memory=True, prefetch_factor=2)
     use_dual_discrimination = use_dual_discrimination and (generator_type == 'triplanes' and resolution != neural_rendering_resolution or use_superresolution)
-
+    
+    static_attributes = stat.normalize_attributes_list(static_attributes)
+    static_attributes_changed = False
+    
     if resume_run is not None:
         model_manager = find_model_manager(resume_run)
         dataset_config: GGHeadImageFolderDatasetConfig = model_manager.load_dataset_config()
@@ -218,7 +226,9 @@ def main(
         resume_checkpoint = model_manager._resolve_checkpoint_id(resume_checkpoint)
 
         if static_attributes is not None:
+            static_attributes_changed = model_config.static_attributes != static_attributes
             model_config.static_attributes = static_attributes
+            model_config.generator_config.static_attributes = static_attributes
             dataset_config.static_attributes = static_attributes
         if classifier is not None:
             model_config.classifier = classifier
@@ -354,6 +364,7 @@ def main(
 
         if freeze_d_layers is not None:
             model_config.discriminator_config.block_config.freeze_layers = freeze_d_layers
+            model_config.discriminator_config.block_config.freeze_layers_offset = freeze_d_layers_offset
 
         dataset_config.path = data
         optimizer_config.loss_config.aug = aug
@@ -444,6 +455,9 @@ def main(
                 use_gsm_flame_template=use_gsm_flame_template,
                 use_flame_template_v2=use_flame_template_v2,
                 use_sphere_template=use_sphere_template,
+                use_halfsphere_template=use_halfsphere_template,
+                use_halfsphere_inverse_template=use_halfsphere_inverse_template,
+                use_eyecrop_template=use_eyecrop_template,
                 use_plane_template=use_plane_template,
 
                 uv_attributes=uv_attributes,
@@ -488,6 +502,7 @@ def main(
             generator_config.random_background = random_background
             generator_config.return_background = return_background
             generator_config.background_color = background_color
+            generator_config.static_attributes = static_attributes
 
         discriminator_config = GaussianDiscriminatorConfig(
             channel_base=opts.cbase,
@@ -499,6 +514,7 @@ def main(
             mapping_network_config=MappingNetworkConfig(),
             block_config=DiscriminatorBlockConfig(
                 freeze_layers = freeze_d_layers,
+                freeze_layers_offset = freeze_d_layers_offset,
             ),
             epilogue_config=DiscriminatorEpilogueConfig(
                 mbstd_group_size = opts.mbstd_group
@@ -571,7 +587,7 @@ def main(
                 lambda_tv_uv_rendering=lambda_tv_uv_rendering,
                 tv_uv_include_transparent_gaussians=tv_uv_include_transparent_gaussians,
                 lambda_beta_loss=lambda_beta_loss,
-                lambda_classifier_loss=lambda_classifier,
+                lambda_classifier_loss=(lambda_classifier if overwrite_lambda_classifier is None else overwrite_lambda_classifier),
 
                 reg_gaussian_position_above=0.1,
                 reg_gaussian_position_below=-0.1,
@@ -606,10 +622,10 @@ def main(
         resume_checkpoint=resume_checkpoint,
         reset_cur_nimg=reset_cur_nimg,
         total_kimg=kimg,
-        freeze_d=freeze_d_layers,
         freeze_g_mapping_layers=freeze_g_mapping_layers,
         freeze_g_synthesis_layers=freeze_g_synthesis_layers,
-        train_classifier_after_epochs=train_classifier_after_epochs
+        train_classifier_after_epochs=train_classifier_after_epochs,
+        static_attributes_changed=static_attributes_changed,
     )
 
     # Hyperparameters & settings.
@@ -719,7 +735,7 @@ def main(
 
     # Augmentation.
     if opts.aug != 'noaug':
-        c.augment_kwargs = dnnlib.EasyDict(xflip=1, rotate90=1, xint=1, scale=1, rotate=1, aniso=1, xfrac=1,
+        c.augment_kwargs = dnnlib.EasyDict(xflip=1, rotate90=0, xint=1, scale=1, rotate=0, aniso=0, xfrac=1,
                                            brightness=1, contrast=1, lumaflip=0, hue=0, saturation=0)
         if opts.aug == 'ada':
             c.ada_target = opts.target

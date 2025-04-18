@@ -1,11 +1,12 @@
 from typing import Optional
-
 import numpy as np
 import torch
+from torch import nn
+
 from eg3d.torch_utils import misc
 from eg3d.torch_utils.ops import upfirdn2d
-from eg3d.training.networks_stylegan2 import MappingNetwork, SynthesisLayer, ToRGBLayer, Conv2dLayer
-from torch import nn
+
+from nirhead.eg3d.training.networks_stylegan2 import MappingNetwork, SynthesisLayer, ToRGBLayer, Conv2dLayer
 
 
 class GGHSynthesisBlock(nn.Module):
@@ -293,6 +294,7 @@ class GGHGenerator(nn.Module):
                  z_dim,  # Input latent (Z) dimensionality.
                  c_dim,  # Conditioning label (C) dimensionality.
                  w_dim,  # Intermediate latent (W) dimensionality.
+                 attr_dim, # Custom static_attribute label dimensionality, 0 = no static_attributes label
                  img_resolution,  # Output resolution.
                  img_channels,  # Number of output color channels.
                  pretrained_plane_resolution: Optional[int] = None,  # For progressive Growing
@@ -303,13 +305,14 @@ class GGHGenerator(nn.Module):
         self.z_dim = z_dim
         self.c_dim = c_dim
         self.w_dim = w_dim
+        self.attr_dim = attr_dim
         self.img_resolution = img_resolution
         self.img_channels = img_channels
         self.synthesis = GGHSynthesisNetwork(w_dim=w_dim, img_resolution=img_resolution, img_channels=img_channels,
                                              pretrained_plane_resolution=pretrained_plane_resolution,
                                              **synthesis_kwargs)
         self.num_ws = self.synthesis.num_ws
-        self.mapping = MappingNetwork(z_dim=z_dim, c_dim=c_dim, w_dim=w_dim, num_ws=self.num_ws, **mapping_kwargs)
+        self.mapping = MappingNetwork(z_dim=z_dim, c_dim=c_dim, w_dim=w_dim, attr_dim=attr_dim, num_ws=self.num_ws, **mapping_kwargs)
 
     def forward(self, z, c, truncation_psi=1, truncation_cutoff=None, update_emas=False, **synthesis_kwargs):
         ws = self.mapping(z, c, truncation_psi=truncation_psi, truncation_cutoff=truncation_cutoff, update_emas=update_emas)
