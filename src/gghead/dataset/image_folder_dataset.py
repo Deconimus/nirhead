@@ -179,7 +179,7 @@ class GGHeadImageFolderDataset(Dataset):
     
     def __getitem__(self, idx):
         img, l = super(GGHeadImageFolderDataset, self).__getitem__(idx)
-        return img, l, self._get_static_attribute_label(idx)
+        return img, l #TODO: enable when training classifier itself, self._get_static_attribute_label(idx)
     
     def _load_static_attribute_labels(self):
         if self._static_attribute_labels:
