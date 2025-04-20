@@ -4,27 +4,26 @@
 #       Otherwise, only some of the are installed, because conda creates a temporary requirements.txt file
 #       only the last -pip section
 
-name: nirhead_cuda128
+name: nirhead
 
 channels:
-  - pytorch-nightly
+  - pytorch
   - conda-forge
-  - nvidia/label/cuda-12.8.1
+  - nvidia/label/cuda-11.8.0
 
 dependencies:
-  - python=3.9
+  - python=3.8
   - pip
   - jupyter
 
   # CUDA and PyTorch
-  #- gcc<12  # Needs to be <12 because nvcc does not like gcc>11
-  - gcc
+  - gcc<12  # Needs to be <12 because nvcc does not like gcc>11
   - pytorch
   - torchvision
+  - pytorch-cuda=11.8
   - cuda-nvcc  # for nvcc
   - cuda-cudart-dev  # for cuda_runtime.h
   - cuda-toolkit
-  - pytorch-cuda
   - libcusparse-dev
   - glm  # For gsplat
   - gxx_linux-64
@@ -34,8 +33,7 @@ dependencies:
       - tyro
       - environs
 
-      #- elias==0.3.4
-      - elias
+      - elias==0.3.4
       - dreifus
       - mediapy
       - wandb
@@ -55,4 +53,3 @@ dependencies:
       - vit-pytorch
       - dacite
       - imageio_ffmpeg
-
