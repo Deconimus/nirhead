@@ -16,11 +16,13 @@ import torch
 import torch.fft
 import torch.nn
 import matplotlib.cm
+
 import eg3d.dnnlib
 from eg3d.torch_utils.ops import upfirdn2d
 import eg3d.legacy  # pylint: disable=import-error
-
 from eg3d.camera_utils import LookAtPoseSampler
+
+import nirhead.data.static_attributes as stat
 
 
 # ----------------------------------------------------------------------------
@@ -330,7 +332,8 @@ class Renderer:
         
         all_attr = None
         if G.attr_dim > 0:
-            all_attr = (torch.rand([G.attr_dim], dtype=torch.float32) + 0.5).int().float()
+            # TODO: use stat.random_attribute_tensor(...), need static_attribute list
+            all_attr = (torch.rand([all_cs.shape[0], G.attr_dim], dtype=torch.float32) + 0.5).int().float()
             all_attr = self.to_device(all_attr)
         
         # Run mapping network.
