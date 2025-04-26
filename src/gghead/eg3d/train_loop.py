@@ -230,9 +230,8 @@ def training_loop(
         DataLoader(dataset=training_set, sampler=training_set_sampler, batch_size=batch_size // num_gpus,
                    **data_loader_kwargs))
     
-    # TODO only relevant if we are training the classifier itself here
-    #if dataset_config.static_attributes:
-    #    assert(training_set._has_static_attributes())
+    if dataset_config.static_attributes:
+        assert(training_set._has_static_attributes())
     
     if rank == 0:
         print()
@@ -589,9 +588,8 @@ def training_loop(
     profiler = torch.autograd.profiler.profile(with_stack=True, profile_memory=True)
     profile_batch_idx = 10
     
-    # TODO only relevant if we are training the classifier itself:
-    #assert(training_set._has_static_attributes() or not training_set._config.static_attributes)
-    #assert(training_set._config.static_attributes == model_config.static_attributes)
+    assert(training_set._has_static_attributes() or not training_set._config.static_attributes)
+    assert(training_set._config.static_attributes == model_config.static_attributes)
     
     while True:
         if batch_idx == profile_batch_idx:

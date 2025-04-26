@@ -209,7 +209,7 @@ class GGHeadImageFolderDataset(Dataset):
     
     def _has_static_attributes(self):
         v = self._load_static_attribute_labels() is not None
-        #assert(v or (self._config.static_attributes is None)) # check (static_attributes implies _has_static_attributes)
+        assert(v or (self._config.static_attributes is None)) # check (static_attributes implies _has_static_attributes)
         return v
     
 
