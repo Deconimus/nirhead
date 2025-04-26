@@ -230,8 +230,9 @@ def training_loop(
         DataLoader(dataset=training_set, sampler=training_set_sampler, batch_size=batch_size // num_gpus,
                    **data_loader_kwargs))
     
-    if dataset_config.static_attributes:
-        assert(training_set._has_static_attributes())
+    # TODO only relevant if we are training the classifier itself here
+    #if dataset_config.static_attributes:
+    #    assert(training_set._has_static_attributes())
     
     if rank == 0:
         print()
@@ -588,8 +589,9 @@ def training_loop(
     profiler = torch.autograd.profiler.profile(with_stack=True, profile_memory=True)
     profile_batch_idx = 10
     
-    assert(training_set._has_static_attributes() or not training_set._config.static_attributes)
-    assert(training_set._config.static_attributes == model_config.static_attributes)
+    # TODO only relevant if we are training the classifier itself:
+    #assert(training_set._has_static_attributes() or not training_set._config.static_attributes)
+    #assert(training_set._config.static_attributes == model_config.static_attributes)
     
     while True:
         if batch_idx == profile_batch_idx:
@@ -616,7 +618,7 @@ def training_loop(
             all_gen_c = [phase_gen_c.split(batch_gpu) for phase_gen_c in all_gen_c.split(batch_size)]
             
             all_gen_attr = None
-            if training_set._has_static_attributes():
+            if model_config.static_attributes is not None:
                 all_gen_attr = stat.random_attribute_tensor(model_config.static_attributes, len(phases) * batch_size, device)
                 all_gen_attr = [phase_gen_attr.split(batch_gpu) for phase_gen_attr in all_gen_attr.split(batch_size)]
             else:
