@@ -101,30 +101,26 @@ class ClassificationDataSet:
         if self._type == 'zip':
             return self._get_zipfile().open(file, 'r')
         return None
-
-    def _load_image(self, file, flip=False):
-        with self._open_file(file) as f:
-            if pyspng is not None and file.lower()[-4:] == '.png':
-                image = pyspng.load(f.read())
-            else:
-                image = np.array(PIL.Image.open(f))
+    
+    @staticmethod
+    def _image_transform(image, flip=False, resolution=None, mode="rgb"):
         if image.ndim == 2:
             image = image[:, :, np.newaxis]  # HW => HWC
-        if self.resolution is not None:
+        if resolution is not None:
             if image.shape[2] == 1:
-                image = resize_img(image[..., 0], self.resolution / image.shape[0])[..., None]
+                image = resize_img(image[..., 0], resolution / image.shape[0])[..., None]
             else:
-                image = resize_img(image, self.resolution / image.shape[0])
-        if not self.mode is None:
-            if image.shape[2] > 1 and self.mode == "gray":
-                image = np.dot(image[...,:3], [0.2989, 0.5870, 0.1140])
+                image = resize_img(image, resolution / image.shape[0])
+        if not mode is None:
+            if image.shape[2] > 1 and mode == "gray":
+                image = np.dot(image[..., :3], [0.2989, 0.5870, 0.1140])
                 if image.ndim == 2:
                     image = image[:, :, np.newaxis]
-            elif image.shape[2] == 1 and self.mode == "rgb":
-                image = np.stack((image[:,:,0],)*3, axis=-1)
-
+            elif image.shape[2] == 1 and mode == "rgb":
+                image = np.stack((image[:, :, 0],) * 3, axis=-1)
+        
         image = image.transpose(2, 0, 1)  # HWC => CHW
-
+        
         if image.dtype == np.uint8:
             image = image.astype(np.float32) / 255.0
         elif image.dtype == np.uint16:
@@ -133,12 +129,20 @@ class ClassificationDataSet:
             image = image.astype(np.float32) / 4294967295.0
         elif image.dtype == np.float16 or image.dtype == np.float64:
             image = image.astype(np.float32)
-
+        
         if flip:
-            image = image[:,:,::-1]
-
-        image = image * 2.0 - 1.0 # normalize
+            image = image[:, :, ::-1]
+        
+        image = image * 2.0 - 1.0  # normalize
         return image
+    
+    def _load_image(self, file, flip=False):
+        with self._open_file(file) as f:
+            if pyspng is not None and file.lower()[-4:] == '.png':
+                image = pyspng.load(f.read())
+            else:
+                image = np.array(PIL.Image.open(f))
+        return self._image_transform(image, flip=flip, resolution=self.resolution, mode=self.mode)
 
     def close(self):
         try:
