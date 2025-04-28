@@ -86,8 +86,8 @@ def main(args):
         video_writer = imageio_ffmpeg.write_frames(
             str(dst_file), (grid_size[0]*args.res, grid_size[1]*args.res),
             fps=args.fps,
-            codec="ffv1" if not args.lossy else "libx265",
-            quality=10 if not args.lossy else 7,
+            codec="ffv1" if not args.lossy else "libx264",
+            quality=10 if not args.lossy else 6,
             pix_fmt_in="gray",
             pix_fmt_out="gray",
         )

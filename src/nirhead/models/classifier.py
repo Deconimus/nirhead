@@ -1,3 +1,4 @@
+import os.path
 import time, inspect
 from typing import Optional, List
 import numpy as np
@@ -241,3 +242,24 @@ def load_classification_model(cfg: ClassifierConfig, device: str, weights_file=N
     
     return model, name
 
+def load_classification_model_dir(classifier_dir, device: str, checkpoint: int = -1):
+    classifier_dir = pathlib.Path(classifier_dir) if isinstance(classifier_dir, str) else classifier_dir
+    if os.path.isdir(classifier_dir / "checkpoints") and len(list((classifier_dir / "checkpoints").glob("*.pth"))) > 0:
+        checkpoint_list = list((classifier_dir / "checkpoints").glob("*.pth"))
+        checkpoint_list.sort(key=lambda f: int(f.name[11:-4]))
+        checkpoint_dict = { int(file.name[11:-4]): file for file in checkpoint_list }
+        if checkpoint < 0:
+            classifier_weights = checkpoint_list[checkpoint]
+        else:
+            classifier_weights = checkpoint_dict[checkpoint]
+    else:
+        classifier_weights = classifier_dir / "weights.pth"
+    
+    with open(classifier_dir / "args.json", "r") as f:
+        classifier_cfg = ClassifierConfig.from_json(json.load(f))
+    
+    return load_classification_model(
+        cfg=classifier_cfg,
+        weights_file=classifier_weights,
+        device=device,
+    )
