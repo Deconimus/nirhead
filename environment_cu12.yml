@@ -1,0 +1,60 @@
+# Note: conda dependencies have only 1 "="
+#       pip dependencies have 2 "=="
+# Fuse pip dependencies together under one " - pip" item
+#       Otherwise, only some of the are installed, because conda creates a temporary requirements.txt file
+#       only the last -pip section
+
+name: nirhead_cu12
+
+channels:
+  - pytorch-nightly
+  - conda-forge
+  - nvidia/label/cuda-12.8.1
+
+dependencies:
+  - python=3.10
+  - pip
+  - jupyter
+
+  # CUDA and PyTorch
+  #- gcc<12  # Needs to be <12 because nvcc does not like gcc>11
+  - gcc
+  - pytorch>=2.6.0
+  - torchvision #>=0.22.0
+  - pytorch-cuda
+  - cuda-nvcc  # for nvcc
+  - cuda-cudart-dev  # for cuda_runtime.h
+  - cuda-toolkit
+  - libcusparse-dev
+  - glm  # For gsplat
+  - gxx_linux-64
+  - gcc_linux-64
+
+  - pip:
+      - tyro
+      - environs
+
+      #- torch+https://download.pytorch.org/whl/cu128
+      #- torchvision+https://download.pytorch.org/whl/cu128
+      #- torchaudio+https://download.pytorch.org/whl/cu128
+
+      - elias==0.3.4
+      - dreifus
+      - mediapy
+      - wandb
+      - pytorch_lightning
+      #- torchsummary
+
+      # For EG3D visualizer
+      - eg3d@git+https://github.com/Deconimus/eg3d.git
+      - imgui #==1.3.0
+      - glfw #==2.2.0
+      - pyopengl #==3.1.5
+
+      # Data processing
+      - visage >= 0.2.2
+
+      - torch-summary
+      - vit-pytorch
+      - dacite
+      - imageio_ffmpeg
