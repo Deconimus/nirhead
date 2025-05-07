@@ -7,9 +7,9 @@
 name: nirhead_cu12
 
 channels:
-  - pytorch-nightly
-  - conda-forge
+  - pytorch
   - nvidia/label/cuda-12.8.1
+  - conda-forge
 
 dependencies:
   - python=3.10
@@ -19,12 +19,12 @@ dependencies:
   # CUDA and PyTorch
   #- gcc<12  # Needs to be <12 because nvcc does not like gcc>11
   - gcc
-  - pytorch>=2.6.0
-  - torchvision #>=0.22.0
-  - pytorch-cuda
+  #- pytorch>=2.6.0
+  #- torchvision #>=0.22.0
+  #- pytorch-cuda
   - cuda-nvcc  # for nvcc
   - cuda-cudart-dev  # for cuda_runtime.h
-  - cuda-toolkit
+  - cuda-toolkit>=12.8.1
   - libcusparse-dev
   - glm  # For gsplat
   - gxx_linux-64
@@ -34,9 +34,10 @@ dependencies:
       - tyro
       - environs
 
-      #- torch+https://download.pytorch.org/whl/cu128
-      #- torchvision+https://download.pytorch.org/whl/cu128
-      #- torchaudio+https://download.pytorch.org/whl/cu128
+      - --extra-index-url https://download.pytorch.org/whl/cu128
+      - torch == 2.7.0+cu128
+      - torchvision
+      - torchaudio
 
       - elias==0.3.4
       - dreifus
