@@ -41,8 +41,9 @@ def main(args):
 
     train_time_start = timer()
 
-    data = {"train_loss": [], "train_acc": [], "train_rmse": [], "test_loss": [], "test_acc": [], "test_rmse": []}
-
+    data = {"train_loss": [], "train_acc": [], "train_rmse": [], "test_loss": [], "test_acc": [], "test_rmse": [], "trainsets": []}
+    
+    epochs_trained = 0
     try:
         for epoch in range(args.epochs):
             with tqdm(total=(len(trainset) // args.batch_size)+int(math.ceil(len(testset) / args.batch_size)), leave=False) as pbar:
@@ -70,14 +71,22 @@ def main(args):
                 break
             if (epoch+1) % 100 == 0 and args.logdir:
                 save_log(data, pathlib.Path(args.logdir) / model_class_concat, name)
+            epochs_trained = epoch+1
     except KeyboardInterrupt:
         print("KeyboardInterrupt: cancelling further training, saving logs.")
-
+    
     train_time_end = timer()
     print(f"Train time on {device}: {(train_time_end-train_time_start):.2f}s")
     print(f"Best test accuracy: {max(data['test_acc'])} (epoch {data['test_acc'].index(max(data['test_acc']))})")
-
+    
+    trainset_relpath = str(pathlib.Path(args.dataset).absolute()).replace("\\", "/")
+    if "EyesNIR/" in trainset_relpath:
+        trainset_relpath = trainset_relpath[trainset_relpath.index("EyesNIR/") + len("EyesNIR/"):]
+    elif "FacesNIR/" in trainset_relpath:
+        trainset_relpath = trainset_relpath[trainset_relpath.index("FacesNIR/") + len("FacesNIR/"):]
+    
     if args.logdir:
+        data["trainsets"].append((trainset_relpath, epochs_trained))
         save_log(data, pathlib.Path(args.logdir) / model_class_concat, name)
 
     if args.savedir:
@@ -89,6 +98,7 @@ def main(args):
         print("Saved model: "+str(weights_file))
 
         # save model arguments
+        model_cfg.trainsets.append((trainset_relpath, epochs_trained)) # some data redundancy for safety & convenience
         args_file = savedir / "args.json"
         with open(args_file, "w+") as f:
             json.dump(model_cfg.to_json(), f, indent=2)

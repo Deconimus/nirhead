@@ -1,12 +1,12 @@
 import os.path, pathlib, time, inspect, json
-from typing import Optional, List
+from typing import Optional, List, Dict, Tuple
 import numpy as np
 import torch, torchvision
 from torch import nn
 from tqdm import tqdm
 from vit_pytorch import ViT, SimpleViT
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from elias.config import Config
 from eg3d.torch_utils import misc
@@ -27,6 +27,7 @@ class ClassifierConfig(Config):
     vit_depth: int = 4
     ch_base: int = 32
     epilogue: bool = False
+    trainsets: Optional[List[Tuple[str, int]]] = field(default_factory=list)
     
 
 def make_crop_module(img_res: int, crop, identity=True):
