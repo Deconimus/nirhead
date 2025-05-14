@@ -9,7 +9,7 @@ from dataclasses import asdict
 from nirhead.models import classifier
 from nirhead.dataset.classification_dataset import ClassificationDataSet
 
-from run_classifier import predict_labels
+from run_classifier_old import predict_labels
 from label_accuracy import evaluate_accuracy
 
 import nirhead.data.static_attributes as stat

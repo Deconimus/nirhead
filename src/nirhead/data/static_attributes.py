@@ -179,3 +179,34 @@ def normalize_attributes_list(static_attributes: Optional[List[str]]):
 
 def get_num_binary_attributes(static_attributes: List[str]):
     return len([attr for attr in static_attributes if types[attr].dtype == bool])
+
+
+def labels_from_attributes(y_pred: torch.Tensor, file_keys: List[str], static_attributes: List[str]):
+    assert(len(file_keys) >= y_pred.shape[0])
+    
+    labels = {}
+    for i in range(y_pred.shape[0]):
+        filekey = file_keys[i]
+        labels[filekey] = {}
+        tobool = lambda v: v >= 0.5
+        
+        offset = 0
+        for attr_idx, attr in enumerate(static_attributes):
+            if not attr in labels[filekey] and types[attr].dim > 1:
+                labels[filekey][attr] = []
+            
+            if types[attr].dim > 1:
+                for elem in range(types[attr].dim):
+                    if types[attr].dtype == bool:
+                        labels[filekey][attr][elem] = tobool(y_pred[i][offset].item())
+                    else:
+                        labels[filekey][attr][elem] = types[attr].dtype(y_pred[i][offset].item())
+                    offset += 1
+            else:
+                if types[attr].dtype == bool:
+                    labels[filekey][attr] = tobool(y_pred[i][offset].item())
+                else:
+                    labels[filekey][attr] = types[attr].dtype(y_pred[i][offset].item())
+                offset += 1
+                
+    return labels
