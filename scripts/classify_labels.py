@@ -47,7 +47,8 @@ def main(args):
                 y_pred = model(imgs).to("cpu")
                 
                 filename_keys = [filenamefilter(pathlib.Path(files[i])) for i in range(y_pred.shape[0])]
-                batch_labels = stat.labels_from_attributes(y_pred, filename_keys, model.static_attributes)
+                batch_labels = stat.labels_from_attribute_tensor(y_pred, filename_keys, model.static_attributes)
+                
                 for filekey in batch_labels.keys():
                     if filekey not in json_dst["labels"].keys():
                         json_dst["labels"][filekey] = {}

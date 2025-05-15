@@ -1,5 +1,5 @@
 import argparse, pathlib, os, cv2, PIL.Image, PIL.ImageOps, math, random, imageio_ffmpeg, json
-import torch
+import torch, torchvision
 import numpy as np
 from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor
@@ -29,7 +29,7 @@ device = torch.device('cuda')
 
 
 def main(args):
-    static_attributes = stat.normalize_attributes_list(stat.labels)
+    static_attributes = stat.normalize_attributes_list(args.labels)
     
     dataset_poses = None
     if args.poses is not None:
@@ -60,12 +60,11 @@ def main(args):
         classifier, classifier_name = load_classification_model_dir(args.classifier, device=device)
     
     rng = torch.Generator(device)
-    if not args.no_seed:
-        rng.manual_seed(args.seed)
-        random.seed(args.seed)
+    rng.manual_seed(args.seed)
+    random.seed(args.seed)
     
     # latent z data
-    z_batches = torch.randn([1, model.z_dim], device=rng.device, generator=rng).to("cpu")
+    z_batches = torch.randn([num_samples, model.z_dim], device=rng.device, generator=rng).to("cpu")
     
     # pose data
     if dataset_poses:
@@ -83,8 +82,20 @@ def main(args):
     
     # attributes data
     attr_batches = stat.random_attribute_tensor(static_attributes, num_samples, device="cpu", rng=rng) if static_attributes else []
-    # TODO: minpulate attr based on arguments
-    # Note: for bp, copy every other z and c and have only attr different (0 and 1), to have perfect separation
+    attr_indices = stat.attribute_indices(static_attributes)
+    
+    # TODO: support for eye_open and gaze control (should happen earlier than bp control here)
+    if "bright_pupil" in attr_indices.keys():
+        attr_idx = attr_indices["bright_pupil"]
+        if args.filter_bp is not None:
+            attr_batches[:,attr_idx] = bool(args.filter_bp)
+        else:
+            for i in range(attr_batches.shape[0] // 2):
+                z_batches[i*2+1, :] = z_batches[i*2, :]
+                c_batches[i*2+1, :] = c_batches[i*2, :]
+                attr_batches[i*2+1, :] = attr_batches[i*2, :]
+                attr_batches[i*2,   attr_idx] = False
+                attr_batches[i*2+1, attr_idx] = True
     
     z_batches    = z_batches.split(args.batch)
     c_batches    = c_batches.split(args.batch)
@@ -101,11 +112,11 @@ def main(args):
             for i in tqdm(range(len(z_batches))):
                 batch_size = z_batches[i].shape[0]
                 
-                images = render_batch(model, z_batches[i].to(device), c_batches[i].to(device), attr_batches[i].to(device), batch_size)
+                images, image_tensors = render_batch(model, z_batches[i].to(device), c_batches[i].to(device), attr_batches[i].to(device), batch_size)
                 image_names = [str(i*args.batch+j).zfill(6)+".png" for j in range(len(images))]
                 
                 if classifier is not None and static_attributes is not None:
-                    batch_labels = label_images(images, image_names, static_attributes, classifier)
+                    batch_labels = label_images(image_tensors, image_names, static_attributes, classifier)
                     for k in batch_labels.keys():
                         labels["labels"][k] = batch_labels[k]
                 
@@ -122,14 +133,17 @@ def render_batch(model, z, c, attr, batch_size):
     output = model.synthesis(w, c, noise_mode='const', return_masks=False,
                              neural_rendering_resolution=args.res,
                              return_uv_map=False)
+    image_tensors = output["image"]
     images = [PIL.ImageOps.grayscale(PIL.Image.fromarray(normalized_torch_to_numpy_img(output["image"][i, ...]))) for i in range(output["image"].shape[0])]
-    return images
+    return images, image_tensors
 
 
 def label_images(images, image_names, static_attributes, classifier):
-    x = torch.tensor(np.stack([np.asarray(img, np.uint8) for img in images], 0)).to(device)
+    x = torchvision.transforms.functional.rgb_to_grayscale(images.to(device))
     y_pred = classifier(x).to("cpu")
-    return stat.labels_from_attributes(y_pred, image_names, static_attributes)
+    y_pred_filtered = stat.take_from_attribute_tensor(y_pred, classifier.static_attributes, static_attributes)
+    labels = stat.labels_from_attribute_tensor(y_pred_filtered, image_names, static_attributes)
+    return labels
 
 
 def save_image(image, dst_file):
