@@ -32,8 +32,14 @@ def main(args):
     print(f"Trainset size: {len(trainset)} ({len(trainset) // args.batch_size} batches of {args.batch_size})")
     print(f"Testset size: {len(testset)} ({len(testset) // args.batch_size} batches of {args.batch_size})")
     
-    model_cfg = classifier.ClassifierConfig.from_dict(dict(vars(args)))
-    model, name = classifier.load_classification_model(model_cfg, device)
+    if args.resume:
+        model, name = classifier.load_classification_model_dir(args.resume, device)
+        with open(pathlib.Path(args.resume) / "args.json", "r") as f:
+            model_cfg = classifier.ClassifierConfig.from_json(json.load(f))
+        print(f"Resuming {str(pathlib.Path(args.resume))}")
+    else:
+        model_cfg = classifier.ClassifierConfig.from_dict(dict(vars(args)))
+        model, name = classifier.load_classification_model(model_cfg, device)
     
     model_class_concat = "_".join([stat.types[l].short for l in label_classes])
     
@@ -42,6 +48,14 @@ def main(args):
     train_time_start = timer()
 
     data = {"train_loss": [], "train_acc": [], "train_rmse": [], "test_loss": [], "test_acc": [], "test_rmse": [], "trainsets": []}
+    if args.resume:
+        history_file = pathlib.Path(args.resume) / "history.json"
+        if not os.path.isfile(history_file) or not os.path.exists(history_file):
+            print("Warning: Resuming without loaded training history!")
+        else:
+            with open(pathlib.Path(args.resume) / "history.json", "r") as f:
+                data = json.load(f)
+            print(f"Loaded history from {str(history_file)}")
     
     epochs_trained = 0
     try:
@@ -69,8 +83,8 @@ def main(args):
             if args.stop_at_train_loss and train_loss <= args.stop_at_train_loss:
                 print(f"Train loss goal reached, stopping training at train_loss={train_loss}")
                 break
-            if (epoch+1) % 100 == 0 and args.logdir:
-                save_log(data, pathlib.Path(args.logdir) / model_class_concat, name)
+            if (epoch+1) % 100 == 0 and args.savedir:
+                save_log(data, pathlib.Path(args.savedir) / model_class_concat / name, "history")
             epochs_trained = epoch+1
     except KeyboardInterrupt:
         print("KeyboardInterrupt: cancelling further training, saving logs.")
@@ -85,10 +99,12 @@ def main(args):
     elif "FacesNIR/" in trainset_relpath:
         trainset_relpath = trainset_relpath[trainset_relpath.index("FacesNIR/") + len("FacesNIR/"):]
     
-    if args.logdir:
+    # save history
+    if args.savedir:
         data["trainsets"].append((trainset_relpath, epochs_trained))
-        save_log(data, pathlib.Path(args.logdir) / model_class_concat, name)
+        save_log(data, pathlib.Path(args.savedir) / model_class_concat / name, "history")
 
+    # save weights
     if args.savedir:
         # save model weights
         savedir = pathlib.Path(args.savedir) / model_class_concat / name
@@ -239,7 +255,7 @@ if __name__ == "__main__":
     parser.add_argument("-e", "--epochs", type=int, default=100)
     parser.add_argument("--flip_aug", action="store_true", default=False)
     
-    parser.add_argument("--logdir", type=str)
+    #parser.add_argument("--logdir", type=str)
     parser.add_argument("--savedir", type=str)
     
     #parser.add_argument("--no_train", type=str)
