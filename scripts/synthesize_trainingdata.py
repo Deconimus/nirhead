@@ -1,4 +1,4 @@
-import argparse, pathlib, os, cv2, PIL.Image, PIL.ImageOps, math, random, imageio_ffmpeg, json
+import argparse, pathlib, os, PIL.Image, PIL.ImageOps, math, random, json, shutil
 import torch, torchvision
 import numpy as np
 from tqdm import tqdm
@@ -41,17 +41,16 @@ def main(args):
     num_samples = args.num
     num_batches = int(math.ceil(args.num / args.batch))
     
-    dst_dir = pathlib.Path(args.dst)
-    os.makedirs(dst_dir, exist_ok=True)
-    dst_img_dir = dst_dir / "train"
-    os.makedirs(dst_img_dir, exist_ok=True)
-    
     chkpt = -1
     if args.checkpoint is not None:
         chkpt = args.checkpoint
     
     model_manager = find_model_manager(args.model)
-    model_short = args.model[:args.model.index("_")]
+    model_short = args.model[:args.model.index("_")] if args.model.startswith("gh") else args.model
+    
+    dst_dir = pathlib.Path(args.dst) / model_short
+    dst_img_dir = dst_dir / "train"
+    os.makedirs(dst_img_dir, exist_ok=True)
     
     checkpoint = model_manager._resolve_checkpoint_id(chkpt)
     print(f"Loading {args.model} at checkpoint {checkpoint}")
@@ -86,7 +85,7 @@ def main(args):
     attr_batches = stat.random_attribute_tensor(static_attributes, num_samples, device="cpu", rng=rng) if static_attributes else []
     attr_indices = stat.attribute_indices(static_attributes)
     
-    # TODO: support for eye_open and gaze control (should happen earlier than bp control here)
+    # TODO: support for eye_open and gaze control (should happen earlier than bp control right here)
     if "bright_pupil" in attr_indices.keys():
         attr_idx = attr_indices["bright_pupil"]
         if args.filter_bp is not None:
@@ -128,6 +127,23 @@ def main(args):
     with open(dst_file_labels, "w+") as f:
         json.dump(labels, f, indent=2)
     print(dst_file_labels)
+    
+    # if dst_dir has a subfolder "base", copy files from there and merge labels.json files
+    dst_base_dir = dst_dir.parent / "base"
+    if os.path.exists(dst_base_dir) and os.path.isdir(dst_base_dir) and os.path.exists(dst_base_dir / "labels.json"):
+        # merge labels with base/labels
+        with open(dst_base_dir / "labels.json", "r") as f:
+            base_labels = json.load(f)
+        for k in base_labels.keys():
+            labels[k] = base_labels[k]
+        with open(dst_file_labels, "w+") as f:
+            json.dump(labels, f, indent=2)
+            
+        # copy files from base
+        for d in os.listdir(dst_base_dir):
+            subdir = dst_base_dir / d
+            if not os.path.isdir(subdir): continue
+            shutil.copytree(str(subdir), str(dst_dir / d))
     
 
 def render_batch(model, z, c, attr, batch_size):
