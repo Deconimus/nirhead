@@ -43,10 +43,13 @@ def main(args):
     
     model_class_concat = "_".join([stat.types[l].short for l in label_classes])
     
+    dst_dir = pathlib.Path(args.savedir) / model_class_concat / name
+    if args.dst is not None:
+        dst_dir = pathlib.Path(args.dst)
+    
     optimizer = torch.optim.Adam(params=model.parameters(), lr=0.0001)
-
     train_time_start = timer()
-
+    
     data = {"train_loss": [], "train_acc": [], "train_rmse": [], "test_loss": [], "test_acc": [], "test_rmse": [], "trainsets": []}
     if args.resume:
         history_file = pathlib.Path(args.resume) / "history.json"
@@ -83,8 +86,8 @@ def main(args):
             if args.stop_at_train_loss and train_loss <= args.stop_at_train_loss:
                 print(f"Train loss goal reached, stopping training at train_loss={train_loss}")
                 break
-            if (epoch+1) % 100 == 0 and args.savedir:
-                save_log(data, pathlib.Path(args.savedir) / model_class_concat / name, "history")
+            if (epoch+1) % 100 == 0 and (args.savedir or args.dst):
+                save_log(data, dst_dir, "history")
             epochs_trained = epoch+1
     except KeyboardInterrupt:
         print("KeyboardInterrupt: cancelling further training, saving logs.")
@@ -100,22 +103,21 @@ def main(args):
         trainset_relpath = trainset_relpath[trainset_relpath.index("FacesNIR/") + len("FacesNIR/"):]
     
     # save history
-    if args.savedir:
+    if (args.savedir or args.dst):
         data["trainsets"].append((trainset_relpath, epochs_trained))
-        save_log(data, pathlib.Path(args.savedir) / model_class_concat / name, "history")
+        save_log(data, dst_dir, "history")
 
     # save weights
-    if args.savedir:
+    if (args.savedir or args.dst):
         # save model weights
-        savedir = pathlib.Path(args.savedir) / model_class_concat / name
-        os.makedirs(savedir, exist_ok=True)
-        weights_file = savedir / ("weights"+ ".pth")
+        os.makedirs(dst_dir, exist_ok=True)
+        weights_file = dst_dir / "weights.pth"
         torch.save(model.state_dict(), weights_file)
         print("Saved model: "+str(weights_file))
 
         # save model arguments
         model_cfg.trainsets.append((trainset_relpath, epochs_trained)) # some data redundancy for safety & convenience
-        args_file = savedir / "args.json"
+        args_file = dst_dir / "args.json"
         with open(args_file, "w+") as f:
             json.dump(model_cfg.to_json(), f, indent=2)
         print("Saved model arguments: " + str(args_file))
@@ -257,6 +259,7 @@ if __name__ == "__main__":
     
     #parser.add_argument("--logdir", type=str)
     parser.add_argument("--savedir", type=str)
+    parser.add_argument("--dst", type=str, default=None)
     
     #parser.add_argument("--no_train", type=str)
     parser.add_argument("--resume", type=str)
