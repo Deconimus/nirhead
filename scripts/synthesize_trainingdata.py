@@ -143,7 +143,12 @@ def main(args):
         for d in os.listdir(dst_base_dir):
             subdir = dst_base_dir / d
             if not os.path.isdir(subdir): continue
-            shutil.copytree(str(subdir), str(dst_dir / d))
+            os.makedirs(dst_dir / d, exist_ok=True)
+            for file in subdir.glob("*"):
+                dst_file = dst_dir / str(file.absolute())[len(str(dst_base_dir.absolute()))+1:]
+                shutil.copy2(str(file), str(dst_file))
+        
+        print(f"Merged base subdir into {dst_dir.name}.")
     
 
 def render_batch(model, z, c, attr, batch_size):
