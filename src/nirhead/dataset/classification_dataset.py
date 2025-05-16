@@ -42,6 +42,9 @@ class ClassificationDataSet:
             self.labels = []
             for file in self.images:
                 file = file.replace("\\", "/")
+                #if not file in labeldata.keys():
+                #    print(file)
+                #    continue
                 assert(file in labeldata.keys())
                 if self.labelclasses is None:
                     self.labelclasses = stat.normalize_attributes_list(labeldata[file].keys())

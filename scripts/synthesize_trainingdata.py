@@ -102,7 +102,7 @@ def main(args):
     c_batches    = c_batches.split(args.batch)
     attr_batches = attr_batches.split(args.batch)
     
-    labels = {"labels": {}}
+    labels = {}
     dst_file_labels = dst_dir / "labels.json"
     if os.path.isfile(dst_file_labels) and os.path.exists(dst_file_labels):
         with open(dst_file_labels, "r") as f:
@@ -119,7 +119,7 @@ def main(args):
                 if classifier is not None and static_attributes is not None:
                     batch_labels = label_images(image_tensors, image_names, static_attributes, classifier)
                     for k in batch_labels.keys():
-                        labels["labels"][k] = batch_labels[k]
+                        labels["train/"+k] = batch_labels[k]
                 
                 for j in range(len(images)):
                     xec.submit(save_image, images[j], dst_img_dir / image_names[j])
