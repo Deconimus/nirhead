@@ -43,6 +43,8 @@ def main(args):
     
     dst_dir = pathlib.Path(args.dst)
     os.makedirs(dst_dir, exist_ok=True)
+    dst_img_dir = dst_dir / "train"
+    os.makedirs(dst_img_dir, exist_ok=True)
     
     chkpt = -1
     if args.checkpoint is not None:
@@ -121,7 +123,7 @@ def main(args):
                         labels["labels"][k] = batch_labels[k]
                 
                 for j in range(len(images)):
-                    xec.submit(save_image, images[j], dst_dir / image_names[j])
+                    xec.submit(save_image, images[j], dst_img_dir / image_names[j])
     
     with open(dst_file_labels, "w+") as f:
         json.dump(labels, f, indent=2)
