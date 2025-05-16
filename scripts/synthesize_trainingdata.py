@@ -114,7 +114,7 @@ def main(args):
                 batch_size = z_batches[i].shape[0]
                 
                 images, image_tensors = render_batch(model, z_batches[i].to(device), c_batches[i].to(device), attr_batches[i].to(device), batch_size)
-                image_names = [str(i*args.batch+j).zfill(6)+".png" for j in range(len(images))]
+                image_names = ["synthetic_"+str(i*args.batch+j).zfill(6)+".png" for j in range(len(images))]
                 
                 if classifier is not None and static_attributes is not None:
                     batch_labels = label_images(image_tensors, image_names, static_attributes, classifier)
