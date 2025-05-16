@@ -144,9 +144,12 @@ def main(args):
             subdir = dst_base_dir / d
             if not os.path.isdir(subdir): continue
             os.makedirs(dst_dir / d, exist_ok=True)
-            for file in subdir.glob("*"):
-                dst_file = dst_dir / str(file.absolute())[len(str(dst_base_dir.absolute()))+1:]
-                shutil.copy2(str(file), str(dst_file))
+            copy_files = list(subdir.glob("*"))
+            with tqdm(total=len(copy_files)) as pbar:
+                with ThreadPoolExecutor(max_workers=16) as xec:
+                    for file in subdir.glob("*"):
+                        dst_file = dst_dir / str(file.absolute())[len(str(dst_base_dir.absolute()))+1:]
+                        xec.submit(copy_file, str(file), str(dst_file), pbar)
         
         print(f"Merged base subdir into {dst_dir.name}.")
     
@@ -171,6 +174,10 @@ def label_images(images, image_names, static_attributes, classifier):
 
 def save_image(image, dst_file):
     image.save(dst_file, compress_level=0)
+    
+def copy_file(src, dst, pbar):
+    shutil.copy2(src, dst)
+    pbar.update(1)
 
 
 def clamp(x, lo, hi):
