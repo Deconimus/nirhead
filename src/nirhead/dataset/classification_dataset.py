@@ -48,11 +48,11 @@ class ClassificationDataSet:
                 
                 l = []
                 for cl in [c for c in self.labelclasses if c in labeldata[file].keys()]:
-                    assert(len(labeldata[file][cl]) == stat.types[cl].dim)
-                    if len(labeldata[file][cl]) > 1:
+                    assert((not isinstance(labeldata[file][cl], list) and stat.types[cl].dim == 1) or (len(labeldata[file][cl]) == stat.types[cl].dim))
+                    if isinstance(labeldata[file][cl], list) and len(labeldata[file][cl]) > 1:
                         for cl_i in range(len(labeldata[file][cl])):
                             l.append(float(labeldata[file][cl][cl_i]))
-                    elif len(labeldata[file][cl]) == 1:
+                    elif not isinstance(labeldata[file][cl], list):
                         l.append(float(labeldata[file][cl]))
                     else:
                         raise ValueError(f"Empty label-data in labels.json at key [{file}][{cl}]")

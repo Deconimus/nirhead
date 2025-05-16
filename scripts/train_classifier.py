@@ -43,9 +43,10 @@ def main(args):
     
     model_class_concat = "_".join([stat.types[l].short for l in label_classes])
     
-    dst_dir = pathlib.Path(args.savedir) / model_class_concat / name
     if args.dst is not None:
         dst_dir = pathlib.Path(args.dst)
+    else:
+        dst_dir = pathlib.Path(args.savedir) / model_class_concat / name
     
     optimizer = torch.optim.Adam(params=model.parameters(), lr=0.0001)
     train_time_start = timer()
