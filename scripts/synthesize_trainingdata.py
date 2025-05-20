@@ -88,7 +88,7 @@ def main(args):
     # TODO: support for gaze control (should happen earlier than bp control, e.g. right here)
     
     if "eye_open" in attr_indices.keys():
-        attr_idx = attr_indices["bright_pupil"]
+        attr_idx = attr_indices["eye_open"]
         low, high = 0.0, 0.0
         if args.filter_eo_min is not None:
             low = args.filter_eo_min
