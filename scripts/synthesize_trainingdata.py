@@ -85,7 +85,17 @@ def main(args):
     attr_batches = stat.random_attribute_tensor(static_attributes, num_samples, device="cpu", rng=rng) if static_attributes else []
     attr_indices = stat.attribute_indices(static_attributes)
     
-    # TODO: support for eye_open and gaze control (should happen earlier than bp control right here)
+    # TODO: support for gaze control (should happen earlier than bp control, e.g. right here)
+    
+    if "eye_open" in attr_indices.keys():
+        attr_idx = attr_indices["bright_pupil"]
+        low, high = 0.0, 0.0
+        if args.filter_eo_min is not None:
+            low = args.filter_eo_min
+        if args.filter_eo_max is not None:
+            high = args.filter_eo_max
+        attr_batches[:, attr_idx] = attr_batches[:, attr_idx] * (high - low) + low # transform uniform random values from [0,1] to [low,high]
+    
     if "bright_pupil" in attr_indices.keys():
         attr_idx = attr_indices["bright_pupil"]
         if args.filter_bp is not None:
@@ -194,7 +204,7 @@ if __name__ == "__main__":
     parser.add_argument("--dst", type=str, default=None)
     parser.add_argument("--res", type=int, default=128)
     parser.add_argument("--seed", type=int, default=136)
-    parser.add_argument("--labels", type=str, nargs="+", default=None)  # grid acts as gradient over given attributes
+    parser.add_argument("--labels", type=str, nargs="+", default=None)  # gradient over given attributes
     parser.add_argument("--classifier", type=str, default=None) # to specify labelling classifier for output images
     
     parser.add_argument("--filter_bp", type=int, default=None)
