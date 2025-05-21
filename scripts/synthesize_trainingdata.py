@@ -85,11 +85,22 @@ def main(args):
     attr_batches = stat.random_attribute_tensor(static_attributes, num_samples, device="cpu", rng=rng) if static_attributes else []
     attr_indices = stat.attribute_indices(static_attributes)
     
-    # TODO: support for gaze control (should happen earlier than bp control, e.g. right here)
+    # TODO: add option to "even out" a distribution found in a given dataset by synthesizing data that will balance value bins for gaze and optionally also for eye_open
+    
+    if "gaze" in attr_indices.keys():
+        attr_idx = attr_indices["gaze"]
+        pitch_low, pitch_high = -math.pi / 2.0, math.pi / 2.0
+        yaw_low, yaw_high = -math.pi / 2.0, math.pi / 2.0
+        if args.filter_gz_pitch_min is not None: pitch_low  = math.radians(args.filter_gz_pitch_min)
+        if args.filter_gz_pitch_max is not None: pitch_high = math.radians(args.filter_gz_pitch_max)
+        if args.filter_gz_yaw_min is not None: yaw_low  = math.radians(args.filter_gz_yaw_min)
+        if args.filter_gz_yaw_max is not None: yaw_high = math.radians(args.filter_gz_yaw_max)
+        attr_batches[:, attr_idx + 0] = (attr_batches[:, attr_idx + 0] - stat.types["gaze"].low) * ((pitch_high - pitch_low) / (stat.types["gaze"].high - stat.types["gaze"].low)) + pitch_low
+        attr_batches[:, attr_idx + 1] = (attr_batches[:, attr_idx + 1] - stat.types["gaze"].low) * ((yaw_high - yaw_low) / (stat.types["gaze"].high - stat.types["gaze"].low)) + yaw_low
     
     if "eye_open" in attr_indices.keys():
         attr_idx = attr_indices["eye_open"]
-        low, high = 0.0, 0.0
+        low, high = 0.0, 1.0
         if args.filter_eo_min is not None:
             low = args.filter_eo_min
         if args.filter_eo_max is not None:
@@ -210,6 +221,10 @@ if __name__ == "__main__":
     parser.add_argument("--filter_bp", type=int, default=None)
     parser.add_argument("--filter_eo_min", type=float, default=None)
     parser.add_argument("--filter_eo_max", type=float, default=None)
+    parser.add_argument("--filter_gz_pitch_min", type=float, default=None)
+    parser.add_argument("--filter_gz_pitch_max", type=float, default=None)
+    parser.add_argument("--filter_gz_yaw_min", type=float, default=None)
+    parser.add_argument("--filter_gz_yaw_max", type=float, default=None)
     args = parser.parse_args()
     
     main(args)
