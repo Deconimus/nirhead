@@ -89,14 +89,25 @@ def main(args):
     
     if "gaze" in attr_indices.keys():
         attr_idx = attr_indices["gaze"]
-        pitch_low, pitch_high = -math.pi / 2.0, math.pi / 2.0
-        yaw_low, yaw_high = -math.pi / 2.0, math.pi / 2.0
+        pitch_low, pitch_high = stat.types["gaze"].low, stat.types["gaze"].high
+        yaw_low, yaw_high = stat.types["gaze"].low, stat.types["gaze"].high
         if args.filter_gz_pitch_min is not None: pitch_low  = math.radians(args.filter_gz_pitch_min)
         if args.filter_gz_pitch_max is not None: pitch_high = math.radians(args.filter_gz_pitch_max)
         if args.filter_gz_yaw_min is not None: yaw_low  = math.radians(args.filter_gz_yaw_min)
         if args.filter_gz_yaw_max is not None: yaw_high = math.radians(args.filter_gz_yaw_max)
         attr_batches[:, attr_idx + 0] = (attr_batches[:, attr_idx + 0] - stat.types["gaze"].low) * ((pitch_high - pitch_low) / (stat.types["gaze"].high - stat.types["gaze"].low)) + pitch_low
         attr_batches[:, attr_idx + 1] = (attr_batches[:, attr_idx + 1] - stat.types["gaze"].low) * ((yaw_high - yaw_low) / (stat.types["gaze"].high - stat.types["gaze"].low)) + yaw_low
+        if args.filter_gz_deadzone is not None:
+            gz_deadzone_rad = math.radians(args.filter_gz_deadzone)
+            for i in range(attr_batches.size[0]):
+                if attr_batches[i, attr_idx+0] <= 0.0:
+                    attr_batches[i, attr_idx+0] = (attr_batches[i, attr_idx+0] - pitch_low) * ((-gz_deadzone_rad - pitch_low) / (pitch_high - pitch_low)) + pitch_low
+                else:
+                    attr_batches[i, attr_idx+0] = (attr_batches[i, attr_idx+0] - pitch_low) * ((pitch_high - gz_deadzone_rad) / (pitch_high - pitch_low)) + gz_deadzone_rad
+                if attr_batches[i, attr_idx+1] <= 0.0:
+                    attr_batches[i, attr_idx+1] = (attr_batches[i, attr_idx+1] - yaw_low) * ((-gz_deadzone_rad - yaw_low) / (yaw_high - yaw_low)) + yaw_low
+                else:
+                    attr_batches[i, attr_idx+1] = (attr_batches[i, attr_idx+1] - yaw_low) * ((yaw_high - gz_deadzone_rad) / (yaw_high - yaw_low)) + gz_deadzone_rad
     
     if "eye_open" in attr_indices.keys():
         attr_idx = attr_indices["eye_open"]
@@ -225,6 +236,7 @@ if __name__ == "__main__":
     parser.add_argument("--filter_gz_pitch_max", type=float, default=None)
     parser.add_argument("--filter_gz_yaw_min", type=float, default=None)
     parser.add_argument("--filter_gz_yaw_max", type=float, default=None)
+    parser.add_argument("--filter_gz_deadzone", type=float, default=None)
     args = parser.parse_args()
     
     main(args)
