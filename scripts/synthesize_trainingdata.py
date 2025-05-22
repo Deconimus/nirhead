@@ -27,6 +27,8 @@ if os.name == 'nt' and 'CONDA_PREFIX' in os.environ:
 
 device = torch.device('cuda')
 
+NUM_ATTR_BINS = { "bright_pupil": 2, "eye_open": 3, "gaze": 5 }
+
 
 def main(args):
     static_attributes = stat.normalize_attributes_list(args.labels)
@@ -85,18 +87,81 @@ def main(args):
     attr_batches = stat.random_attribute_tensor(static_attributes, num_samples, device="cpu", rng=rng) if static_attributes else []
     attr_indices = stat.attribute_indices(static_attributes)
     
+    # -- Even-out Attribute Distribution ---------------------------------------
+    
     # TODO: add option to "even out" a distribution found in a given dataset by synthesizing data that will balance value bins for gaze and optionally also for eye_open
+    if args.augment_distribution:
+        real_bins = get_real_data_bins(dst_dir.parent / "base", static_attributes)
+        print(f"Real Bins: {real_bins}")
+        
+        # greedy determine number of synth samples per bin
+        synth_bins = {k: [[0 for _ in range(NUM_ATTR_BINS[k])] for _ in range(stat.types[k].dim)] for k in real_bins.keys()}
+        for i in range(num_samples):
+            for attr in synth_bins.keys():
+                for elem_idx in range(stat.types[attr].dim):
+                    smallest_bin, smallest_bin_num = 0, -1
+                    for b in range(len(synth_bins[attr][elem_idx])):
+                        bin_num = synth_bins[attr][elem_idx][b] + real_bins[attr][elem_idx][b]
+                        if smallest_bin_num < 0 or bin_num < smallest_bin_num:
+                            smallest_bin = b
+                            smallest_bin_num = bin_num
+                    synth_bins[attr][elem_idx][smallest_bin] += 1
+        print(f"Synthetic Bins: {synth_bins}")
+        
+        # generate attribute values
+        tensors = []
+        for attr in static_attributes:
+            attr_dim = stat.types[attr].dim
+            attr_dtype = stat.types[attr].dtype
+            attr_low = stat.types[attr].low
+            attr_high = stat.types[attr].high
+            for elem_idx in range(attr_dim):
+                ts = []
+                for b, bin_samples in enumerate(synth_bins[attr][elem_idx]):
+                    shape = (bin_samples, 1)
+                    t = None
+                    if attr_dtype == bool:
+                        if b == 0:
+                            t = torch.zeros(shape, dtype=torch.float32, device="cpu")
+                        else:
+                            t = torch.ones(shape, dtype=torch.float32, device="cpu")
+                    else:
+                        low = attr_low + (attr_high - attr_low) * (b / len(synth_bins[attr][elem_idx]))
+                        high = attr_low + (attr_high - attr_low) * ((b+1) / len(synth_bins[attr][elem_idx]))
+                        if attr_dtype == int:
+                            t = torch.randint(int(low), int(high), shape, dtype=torch.int32, device="cpu").to(dtype=torch.float32)
+                        elif attr_dtype == float:
+                            t = torch.rand(shape, dtype=torch.float32, device="cpu") * (high - low) + low
+                    ts.append(t)
+                attr_tensor = torch.cat(ts, dim=0)
+                attr_tensor = attr_tensor[torch.randperm(attr_tensor.shape[0])]
+                tensors.append(attr_tensor)
+        attr_batches = torch.cat(tensors, dim=1)
+        print(f"attributes tensor shape: {attr_batches.shape}")
+    
+    
+    # -- Attribute Control -----------------------------------------------------
     
     if "gaze" in attr_indices.keys():
         attr_idx = attr_indices["gaze"]
+        
+        if args.filter_gz_radius is not None:
+            args.filter_gz_pitch_min = -args.filter_gz_radius
+            args.filter_gz_pitch_max = args.filter_gz_radius
+            args.filter_gz_yaw_min = -args.filter_gz_radius
+            args.filter_gz_yaw_max = args.filter_gz_radius
+            
         pitch_low, pitch_high = stat.types["gaze"].low, stat.types["gaze"].high
         yaw_low, yaw_high = stat.types["gaze"].low, stat.types["gaze"].high
         if args.filter_gz_pitch_min is not None: pitch_low  = math.radians(args.filter_gz_pitch_min)
         if args.filter_gz_pitch_max is not None: pitch_high = math.radians(args.filter_gz_pitch_max)
         if args.filter_gz_yaw_min is not None: yaw_low  = math.radians(args.filter_gz_yaw_min)
         if args.filter_gz_yaw_max is not None: yaw_high = math.radians(args.filter_gz_yaw_max)
-        attr_batches[:, attr_idx + 0] = (attr_batches[:, attr_idx + 0] - stat.types["gaze"].low) * ((pitch_high - pitch_low) / (stat.types["gaze"].high - stat.types["gaze"].low)) + pitch_low
-        attr_batches[:, attr_idx + 1] = (attr_batches[:, attr_idx + 1] - stat.types["gaze"].low) * ((yaw_high - yaw_low) / (stat.types["gaze"].high - stat.types["gaze"].low)) + yaw_low
+        if not (pitch_low == stat.types["gaze"].low and pitch_high == stat.types["gaze"].high):
+            attr_batches[:, attr_idx + 0] = (attr_batches[:, attr_idx + 0] - stat.types["gaze"].low) * ((pitch_high - pitch_low) / (stat.types["gaze"].high - stat.types["gaze"].low)) + pitch_low
+        if not (yaw_low == stat.types["gaze"].low and yaw_high == stat.types["gaze"].high):
+            attr_batches[:, attr_idx + 1] = (attr_batches[:, attr_idx + 1] - stat.types["gaze"].low) * ((yaw_high - yaw_low) / (stat.types["gaze"].high - stat.types["gaze"].low)) + yaw_low
+            
         if args.filter_gz_deadzone is not None:
             gz_deadzone_rad = math.radians(args.filter_gz_deadzone)
             for i in range(attr_batches.size[0]):
@@ -116,13 +181,14 @@ def main(args):
             low = args.filter_eo_min
         if args.filter_eo_max is not None:
             high = args.filter_eo_max
-        attr_batches[:, attr_idx] = attr_batches[:, attr_idx] * (high - low) + low # transform uniform random values from [0,1] to [low,high]
+        if not (low == 0.0 and high == 1.0):
+            attr_batches[:, attr_idx] = attr_batches[:, attr_idx] * (high - low) + low # transform uniform random values from [0,1] to [low,high]
     
     if "bright_pupil" in attr_indices.keys():
         attr_idx = attr_indices["bright_pupil"]
         if args.filter_bp is not None:
             attr_batches[:,attr_idx] = bool(args.filter_bp)
-        else:
+        elif args.augment_distribution is None: # 50/50 distribution, if not augmenting given data
             for i in range(attr_batches.shape[0] // 2):
                 z_batches[i*2+1, :] = z_batches[i*2, :]
                 c_batches[i*2+1, :] = c_batches[i*2, :]
@@ -133,6 +199,9 @@ def main(args):
     z_batches    = z_batches.split(args.batch)
     c_batches    = c_batches.split(args.batch)
     attr_batches = attr_batches.split(args.batch)
+    
+    
+    # -- Synthesize Images -----------------------------------------------------
     
     labels = {}
     dst_file_labels = dst_dir / "labels.json"
@@ -160,7 +229,9 @@ def main(args):
         json.dump(labels, f, indent=2)
     print(dst_file_labels)
     
-    # if dst_dir has a subfolder "base", copy files from there and merge labels.json files
+    
+    # -- Add Labels and Images from Base-Folder --------------------------------
+    
     dst_base_dir = dst_dir.parent / "base"
     if os.path.exists(dst_base_dir) and os.path.isdir(dst_base_dir) and os.path.exists(dst_base_dir / "labels.json"):
         # merge labels with base/labels
@@ -204,6 +275,35 @@ def label_images(images, image_names, static_attributes, classifier):
     return labels
 
 
+def get_real_data_bins(dir, static_attributes):
+    labels = None
+    with open(dir / "labels.json", "r") as f:
+        labels = json.load(f)
+    bins = { attr_key: [[0 for _ in range(NUM_ATTR_BINS[attr_key])] for _ in range(stat.types[attr_key].dim)] for attr_key in static_attributes }
+    for file_key in labels.keys():
+        for attr_key in labels[file_key].keys():
+            if not attr_key in static_attributes: continue
+            if stat.types[attr_key].dtype == bool:
+                if stat.types[attr_key].dim == 1:
+                    bins[attr_key][0][int(labels[file_key][attr_key])] += 1
+                else:
+                    for i in range(stat.types[attr_key].dim):
+                        bins[attr_key][i][int(labels[file_key][attr_key][i])] += 1
+            else:
+                if stat.types[attr_key].dim == 1:
+                    bins[attr_key][0][get_bin(labels[file_key][attr_key], attr_key)] += 1
+                else:
+                    for i in range(stat.types[attr_key].dim):
+                        bins[attr_key][i][get_bin(labels[file_key][attr_key][i], attr_key)] += 1
+    return bins
+
+
+def get_bin(val, attribute):
+    normval = (val - stat.types[attribute].low) / (stat.types[attribute].high - stat.types[attribute].low)
+    if normval <= 0.0: return 0
+    if normval >= 1.0: return NUM_ATTR_BINS[attribute]-1
+    return int(normval * NUM_ATTR_BINS[attribute])
+
 def save_image(image, dst_file):
     image.save(dst_file, compress_level=0)
     
@@ -229,6 +329,8 @@ if __name__ == "__main__":
     parser.add_argument("--labels", type=str, nargs="+", default=None)  # gradient over given attributes
     parser.add_argument("--classifier", type=str, default=None) # to specify labelling classifier for output images
     
+    parser.add_argument("--augment_distribution", action="store_true", default=False)
+    
     parser.add_argument("--filter_bp", type=int, default=None)
     parser.add_argument("--filter_eo_min", type=float, default=None)
     parser.add_argument("--filter_eo_max", type=float, default=None)
@@ -237,6 +339,7 @@ if __name__ == "__main__":
     parser.add_argument("--filter_gz_yaw_min", type=float, default=None)
     parser.add_argument("--filter_gz_yaw_max", type=float, default=None)
     parser.add_argument("--filter_gz_deadzone", type=float, default=None)
+    parser.add_argument("--filter_gz_radius", type=float, default=None)
     args = parser.parse_args()
     
     main(args)

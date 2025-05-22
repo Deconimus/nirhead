@@ -198,9 +198,9 @@ def labels_from_attribute_tensor(y_pred: torch.Tensor, file_keys: List[str], sta
             if types[attr].dim > 1:
                 for elem in range(types[attr].dim):
                     if types[attr].dtype == bool:
-                        labels[file_key][attr][elem] = tobool(y_pred[i][offset].item())
+                        labels[file_key][attr].append(tobool(y_pred[i][offset].item()))
                     else:
-                        labels[file_key][attr][elem] = types[attr].dtype(y_pred[i][offset].item())
+                        labels[file_key][attr].append(types[attr].dtype(y_pred[i][offset].item()))
                     offset += 1
             else:
                 if types[attr].dtype == bool:
