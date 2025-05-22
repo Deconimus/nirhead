@@ -164,7 +164,7 @@ def main(args):
             
         if args.filter_gz_deadzone is not None:
             gz_deadzone_rad = math.radians(args.filter_gz_deadzone)
-            for i in range(attr_batches.size[0]):
+            for i in range(attr_batches.shape[0]):
                 if attr_batches[i, attr_idx+0] <= 0.0:
                     attr_batches[i, attr_idx+0] = (attr_batches[i, attr_idx+0] - pitch_low) * ((-gz_deadzone_rad - pitch_low) / (pitch_high - pitch_low)) + pitch_low
                 else:
