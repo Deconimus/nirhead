@@ -1,9 +1,0 @@
-#!/bin/bash
-export BW_IMPLEMENTATION=1
-
-python scripts/train_classifier.py --dataset /mnt/g/EyesNIR/synthetic_augmented_classifiers/trainsets/gaze/full_synthetic/gh76 --model vit --vit_mlp_dim 2048 --vit_heads 8 --epochs 100 --labels gaze --flip_aug --dst /mnt/g/EyesNIR/synthetic_augmented_classifiers/models/gaze/vit16_gz_full_synthetic_gh76
-python scripts/train_classifier.py --dataset /mnt/g/EyesNIR/synthetic_augmented_classifiers/trainsets/gaze/synthetic_extreme/gh76 --model vit --vit_mlp_dim 2048 --vit_heads 8 --epochs 100 --labels gaze --flip_aug --dst /mnt/g/EyesNIR/synthetic_augmented_classifiers/models/gaze/vit16_gz_synthetic_extreme_gh76
-python scripts/train_classifier.py --dataset /mnt/g/EyesNIR/synthetic_augmented_classifiers/trainsets/gaze/synthetic_narrow/gh76 --model vit --vit_mlp_dim 2048 --vit_heads 8 --epochs 100 --labels gaze --flip_aug --dst /mnt/g/EyesNIR/synthetic_augmented_classifiers/models/gaze/vit16_gz_synthetic_narrow_gh76
-python scripts/train_classifier.py --dataset /mnt/g/EyesNIR/synthetic_augmented_classifiers/trainsets/gaze/synthetic_narrower/gh76 --model vit --vit_mlp_dim 2048 --vit_heads 8 --epochs 100 --labels gaze --flip_aug --dst /mnt/g/EyesNIR/synthetic_augmented_classifiers/models/gaze/vit16_gz_synthetic_narrower_gh76
-python scripts/train_classifier.py --dataset /mnt/g/EyesNIR/synthetic_augmented_classifiers/trainsets/gaze/full_real_synthetic_extended/gh76 --model vit --vit_mlp_dim 2048 --vit_heads 8 --epochs 100 --labels gaze --flip_aug --dst /mnt/g/EyesNIR/synthetic_augmented_classifiers/models/gaze/vit16_gz_full_real_synthetic_extended_gh76
-python scripts/train_classifier.py --dataset /mnt/g/EyesNIR/synthetic_augmented_classifiers/trainsets/gaze/full_real --model vit --vit_mlp_dim 2048 --vit_heads 8 --epochs 100 --labels gaze --flip_aug --dst /mnt/g/EyesNIR/synthetic_augmented_classifiers/models/gaze/vit16_gz_full_real

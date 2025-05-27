@@ -1,0 +1,12 @@
+#!/bin/bash
+export BW_IMPLEMENTATION=1
+
+#python scripts/train_classifier.py --dataset /mnt/g/EyesNIR/synthetic_augmented_classifiers/trainsets/gaze/real_complement_wider --model vit --vit_mlp_dim 2048 --vit_heads 8 --epochs 100 --labels gaze --flip_aug --dst /mnt/g/EyesNIR/synthetic_augmented_classifiers/models/gaze/vit16_gz_real_complement_wider
+#python scripts/train_classifier.py --dataset /mnt/g/EyesNIR/synthetic_augmented_classifiers/trainsets/gaze/real_complement_wide --model vit --vit_mlp_dim 2048 --vit_heads 8 --epochs 100 --labels gaze --flip_aug --dst /mnt/g/EyesNIR/synthetic_augmented_classifiers/models/gaze/vit16_gz_real_complement_wide
+#python scripts/train_classifier.py --dataset /mnt/g/EyesNIR/synthetic_augmented_classifiers/trainsets/gaze/real_complement_narrow --model vit --vit_mlp_dim 2048 --vit_heads 8 --epochs 100 --labels gaze --flip_aug --dst /mnt/g/EyesNIR/synthetic_augmented_classifiers/models/gaze/vit16_gz_real_complement_narrow
+
+#python scripts/train_classifier.py --dataset /mnt/g/EyesNIR/synthetic_augmented_classifiers/trainsets/eye_open/real_complement_open --model vit --vit_mlp_dim 1024 --vit_heads 8 --epochs 100 --labels eye_open --flip_aug --dst /mnt/g/EyesNIR/synthetic_augmented_classifiers/models/eye_open/vit16_eo_real_complement_open
+#python scripts/train_classifier.py --dataset /mnt/g/EyesNIR/synthetic_augmented_classifiers/trainsets/eye_open/real_complement_closed --model vit --vit_mlp_dim 1024 --vit_heads 8 --epochs 100 --labels eye_open --flip_aug --dst /mnt/g/EyesNIR/synthetic_augmented_classifiers/models/eye_open/vit16_eo_real_complement_closed
+
+python scripts/train_classifier.py --dataset /mnt/g/EyesNIR/synthetic_augmented_classifiers/trainsets/bright_pupil/real_complement_bp0 --model vit --vit_mlp_dim 1024 --vit_heads 8 --epochs 100 --labels bright_pupil --flip_aug --dst /mnt/g/EyesNIR/synthetic_augmented_classifiers/models/bright_pupil/vit16_bp_real_complement_bp0
+python scripts/train_classifier.py --dataset /mnt/g/EyesNIR/synthetic_augmented_classifiers/trainsets/bright_pupil/real_complement_bp1 --model vit --vit_mlp_dim 1024 --vit_heads 8 --epochs 100 --labels bright_pupil --flip_aug --dst /mnt/g/EyesNIR/synthetic_augmented_classifiers/models/bright_pupil/vit16_bp_real_complement_bp1
