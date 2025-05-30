@@ -234,7 +234,7 @@ def load_classification_model(cfg: ClassifierConfig, device: str, weights_file=N
         depth = cfg.vit_depth if cfg.vit_depth else 4
         
         model = VIT(img_res=cfg.img_res, img_ch=1, static_attributes=cfg.labels, crop=(cfg.crop_h, 0), patch_size=cfg.patch_size, mlp_dim=mlp_dim, dim=dim, heads=heads, depth=depth).to(device)
-        name = f"simplevit{cfg.patch_size}_mlpdim{mlp_dim}" + (f"_dim{dim}" if dim else "") + f"_heads{heads}_depth{depth}" + (f"_croph{cfg.crop_h}" if cfg.crop_h else "") + "_" + str(int(time.time()))
+        name = f"vit{cfg.patch_size}_{'_'.join([stat.types[l].short for l in cfg.labels])}_mlp{mlp_dim}" + (f"_dim{dim}" if dim else "") + f"_h{heads}_d{depth}" + (f"_croph{cfg.crop_h}" if cfg.crop_h else "") + "_" + str(int(time.time()))
         
     if weights_file:
         with open(weights_file, "rb") as f:

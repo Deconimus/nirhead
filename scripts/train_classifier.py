@@ -51,7 +51,7 @@ def main(args):
     optimizer = torch.optim.Adam(params=model.parameters(), lr=0.0001)
     train_time_start = timer()
     
-    data = {"train_loss": [], "train_acc": [], "train_rmse": [], "test_loss": [], "test_acc": [], "test_rmse": [], "trainsets": []}
+    data = {"train_loss": [], "train_acc": [], "train_rmse": [], "train_bce": [], "test_loss": [], "test_acc": [], "test_rmse": [], "test_rmse_attr": {}, "test_bce": [], "trainsets": []}
     if args.resume:
         history_file = pathlib.Path(args.resume) / "history.json"
         if not os.path.isfile(history_file) or not os.path.exists(history_file):
@@ -65,8 +65,8 @@ def main(args):
     try:
         for epoch in range(args.epochs):
             with tqdm(total=(len(trainset) // args.batch_size)+int(math.ceil(len(testset) / args.batch_size)), leave=False) as pbar:
-                train_loss, train_acc, train_rmse, train_bce = train_step(dl_train, model, optimizer, label_classes, device, pbar)
-                test_loss, test_acc, test_rmse, test_bce = test_step(dl_test, model, label_classes, device, pbar)
+                train_loss, train_acc, train_rmse, train_bce = train_step(dl_train, model, optimizer, label_classes, args.loss, device, pbar)
+                test_loss, test_acc, test_rmse, test_rmse_attr, test_bce = test_step(dl_test, model, label_classes, args.loss, device, pbar)
 
             print(f"Epoch {epoch:04} | Train: (loss={train_loss:.6f}, acc={train_acc:.3f}, rmse={train_rmse:.6f}, bce={train_bce:.6f})"+
                   f" | Test (loss={test_loss:.6f}, acc={test_acc:.3f}, rmse={test_rmse:.6f}, bce={test_bce:.6f})"+
@@ -75,12 +75,16 @@ def main(args):
             data["train_loss"].append(float(train_loss))
             data["train_acc"].append(float(train_acc))
             data["train_rmse"].append(float(train_rmse))
-            data["train_rmse"].append(float(train_bce))
+            data["train_bce"].append(float(train_bce))
             data["test_loss"].append(float(test_loss))
             data["test_acc"].append(float(test_acc))
             data["test_rmse"].append(float(test_rmse))
-            data["train_rmse"].append(float(test_bce))
-
+            data["test_bce"].append(float(test_bce))
+            for key in test_rmse_attr.keys():
+                if not key in data["test_rmse_attr"].keys():
+                    data["test_rmse_attr"][key] = []
+                data["test_rmse_attr"][key].append(float(test_rmse_attr[key]))
+            
             if args.stop_at_acc and test_acc >= args.stop_at_acc:
                 print(f"Test accuracy goal reached, stopping training at test_acc={test_acc}")
                 break
@@ -135,8 +139,8 @@ def main(args):
         
         evaluate_accuracy(gt=labels_gt, pred=labels_pred, filter=False)
         
-
-def train_step(data_loader, model, optimizer, static_attributes, device, pbar):
+        
+def train_step(data_loader, model, optimizer, static_attributes, loss_type, device, pbar):
     train_loss, train_acc, train_rmse, train_bce = 0.0, 0.0, 0.0, 0.0
 
     for batch, (x, y) in enumerate(data_loader):
@@ -144,12 +148,12 @@ def train_step(data_loader, model, optimizer, static_attributes, device, pbar):
         
         y_pred = model(x)
 
-        loss = stat.attributes_loss(y_pred, y, static_attributes)
+        loss = stat.attributes_loss(y_pred, y, static_attributes, loss_type=loss_type)
         train_loss += loss
         train_acc += calc_accuracy(y_pred=y_pred, y_true=y, static_attributes=static_attributes)
         
         with torch.no_grad():
-            train_rmse += calc_rmse(y_pred=y_pred, y_true=y, static_attributes=static_attributes)
+            train_rmse += calc_rmse(y_pred=y_pred, y_true=y, static_attributes=static_attributes)[0]
             train_bce += calc_bce(y_pred=y_pred, y_true=y, static_attributes=static_attributes)
 
         optimizer.zero_grad()
@@ -166,8 +170,9 @@ def train_step(data_loader, model, optimizer, static_attributes, device, pbar):
     return train_loss, train_acc, train_rmse, train_bce
 
 
-def test_step(data_loader, model, static_attributes, device, pbar):
+def test_step(data_loader, model, static_attributes, loss_type, device, pbar):
     test_loss, test_acc, test_rmse, test_bce = 0.0, 0.0, 0.0, 0.0
+    test_rmse_attr = { attr: 0.0 for attr in static_attributes if stat.types[attr] != bool }
     model.eval() # evaluation mode
 
     with torch.inference_mode():
@@ -176,18 +181,26 @@ def test_step(data_loader, model, static_attributes, device, pbar):
 
             y_pred = model(x)
 
-            test_loss += stat.attributes_loss(y_pred, y, static_attributes)
+            test_loss += stat.attributes_loss(y_pred, y, static_attributes, loss_type=loss_type)
             test_acc += calc_accuracy(y_pred=y_pred, y_true=y, static_attributes=static_attributes)
-            test_rmse += calc_rmse(y_pred=y_pred, y_true=y, static_attributes=static_attributes)
+            
+            test_batch_rmse, test_batch_rmse_attr = calc_rmse(y_pred=y_pred, y_true=y, static_attributes=static_attributes)
+            test_rmse += test_batch_rmse
+            for attr in test_batch_rmse_attr.keys():
+                test_rmse_attr[attr] += test_batch_rmse_attr[attr]
+            
             test_bce += calc_bce(y_pred=y_pred, y_true=y, static_attributes=static_attributes)
             
             pbar.update(1)
         
         test_loss /= len(data_loader)
         test_acc  /= len(data_loader)
-        test_rmse  /= len(data_loader)
+        test_rmse /= len(data_loader)
         test_bce  /= len(data_loader)
-        return test_loss, test_acc, test_rmse, test_bce
+        for attr in test_rmse_attr.keys():
+            test_rmse_attr[attr] /= len(data_loader)
+            
+        return test_loss, test_acc, test_rmse, test_rmse_attr, test_bce
 
 
 def calc_accuracy(y_pred, y_true, static_attributes):
@@ -198,7 +211,7 @@ def calc_accuracy(y_pred, y_true, static_attributes):
     y_true_binary = stat.take_binary_from_attribute_tensor(y_true, static_attributes)
     
     pred_onehot = (y_pred_binary >= 0.5)
-    acc= 0.0
+    acc = 0.0
     correct = torch.eq(y_true_binary, pred_onehot)
     correct_ = correct[:,0]
     for i in range(1, correct.shape[1]):
@@ -214,15 +227,18 @@ def calc_rmse(y_pred, y_true, static_attributes):
     num_binary_attributes = stat.get_num_binary_attributes(static_attributes)
     
     loss = 0.0
+    attr_losses = {}
     idx_off = 0
     for attr in static_attributes:
         dim = stat.types[attr].dim
         if stat.types[attr].dtype == float or stat.types[attr].dtype == int:
-            loss += torch.sqrt(torch.nn.functional.mse_loss(y_pred[:, idx_off:idx_off + dim], y_true[:, idx_off:idx_off + dim]))
+            attr_loss = torch.sqrt(torch.nn.functional.mse_loss(y_pred[:, idx_off:idx_off + dim], y_true[:, idx_off:idx_off + dim])).item()
+            attr_losses[attr] = attr_loss
+            loss += attr_loss
         idx_off += dim
     loss *= (num_attributes - num_binary_attributes) / num_attributes
     
-    return loss
+    return loss, attr_losses
 
 
 def calc_bce(y_pred, y_true, static_attributes):
@@ -257,6 +273,7 @@ if __name__ == "__main__":
     parser.add_argument("-b", "--batch_size", type=int, default=128)
     parser.add_argument("-e", "--epochs", type=int, default=100)
     parser.add_argument("--flip_aug", action="store_true", default=False)
+    parser.add_argument("--loss", type=str, default="mixed")
     
     #parser.add_argument("--logdir", type=str)
     parser.add_argument("--savedir", type=str)

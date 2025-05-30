@@ -33,44 +33,65 @@ BRIGHTPUPIL_EYEOPEN_THRESHOLD = 0.3
 def attributes_loss(attr_pred: torch.Tensor,
                     attr_truth: torch.Tensor,
                     static_attributes: List[str],
+                    loss_type: str = "mixed",
                     #attribute_lambdas: Optional[List[float]] = default_attribute_lambdas
                     ):
     assert(attr_pred.shape == attr_truth.shape)
+    loss_type = loss_type.strip().lower()
     
     num_attributes = len(static_attributes)
-    num_binary_attributes = get_num_binary_attributes(static_attributes)
+    loss = 0.0
     
-    lambda_binary = num_binary_attributes / num_attributes
-    binary_loss = 0.0
-    if num_binary_attributes > 0:
-        binary_attr_pred  = take_binary_from_attribute_tensor(attr_pred, static_attributes)
-        binary_attr_truth = take_binary_from_attribute_tensor(attr_truth, static_attributes)
-        binary_loss = torch.nn.functional.binary_cross_entropy_with_logits(binary_attr_pred, binary_attr_truth) * lambda_binary
+    if loss_type == "mixed":
+        num_binary_attributes = get_num_binary_attributes(static_attributes)
+        
+        lambda_binary = num_binary_attributes / num_attributes
+        binary_loss = 0.0
+        if num_binary_attributes > 0:
+            binary_attr_pred  = take_binary_from_attribute_tensor(attr_pred, static_attributes)
+            binary_attr_truth = take_binary_from_attribute_tensor(attr_truth, static_attributes)
+            binary_loss = torch.nn.functional.binary_cross_entropy_with_logits(binary_attr_pred, binary_attr_truth) * lambda_binary
+        
+        discrete_loss = 0.0
+        if num_binary_attributes < num_attributes:
+            idx_off = 0
+            for attr in static_attributes:
+                dim = types[attr].dim
+                
+                discrete_loss_attr = 0.0
+                if types[attr].dtype == float or types[attr].dtype == int:
+                    if dim > 1:
+                        discrete_loss_attr = torch.nn.functional.mse_loss(attr_pred[:,idx_off:idx_off+dim], attr_truth[:,idx_off:idx_off+dim])
+                        discrete_loss_attr = torch.sqrt(discrete_loss_attr)
+                    else:
+                        discrete_loss_attr = torch.nn.functional.l1_loss(attr_pred[:, idx_off:idx_off + dim], attr_truth[:, idx_off:idx_off + dim])
+                    #discrete_loss_attr = torch.nn.functional.mse_loss(attr_pred[:, idx_off:idx_off + dim], attr_truth[:, idx_off:idx_off + dim])
+                    
+                    attr_lambda = 1.0 # if attribute_lambdas is None or attr not in attribute_lambdas.keys() else attribute_lambdas[attr]
+                    discrete_loss += discrete_loss_attr * attr_lambda
+                    
+                idx_off += dim
+                
+            discrete_loss *= (num_attributes - num_binary_attributes) / num_attributes
+        loss = binary_loss + discrete_loss
     
-    discrete_loss = 0.0
-    if num_binary_attributes < num_attributes:
+    elif loss_type == "bce":
+        loss = torch.nn.functional.binary_cross_entropy_with_logits(attr_pred, attr_truth)
+    
+    else:
         idx_off = 0
         for attr in static_attributes:
             dim = types[attr].dim
+            loss_attr = 0.0
+            if loss_type == "rmse" or loss_type == "mse":
+                loss_attr = torch.nn.functional.mse_loss(attr_pred[:,idx_off:idx_off+dim], attr_truth[:,idx_off:idx_off+dim])
+                if loss_type == "rmse":
+                    loss_attr = torch.sqrt(loss_attr)
             
-            discrete_loss_attr = 0.0
-            if types[attr].dtype == float or types[attr].dtype == int:
-                if dim > 1:
-                    discrete_loss_attr = torch.nn.functional.mse_loss(attr_pred[:,idx_off:idx_off+dim], attr_truth[:,idx_off:idx_off+dim])
-                    discrete_loss_attr = torch.sqrt(discrete_loss_attr)
-                else:
-                    discrete_loss_attr = torch.nn.functional.l1_loss(attr_pred[:, idx_off:idx_off + dim], attr_truth[:, idx_off:idx_off + dim])
-                #discrete_loss_attr = torch.nn.functional.mse_loss(attr_pred[:, idx_off:idx_off + dim], attr_truth[:, idx_off:idx_off + dim])
-                
-                attr_lambda = 1.0 # if attribute_lambdas is None or attr not in attribute_lambdas.keys() else attribute_lambdas[attr]
-                discrete_loss += discrete_loss_attr * attr_lambda
-                
-            idx_off += dim
+            loss += loss_attr
+        loss = loss / num_attributes
             
-        discrete_loss *= (num_attributes - num_binary_attributes) / num_attributes
-    
-    #print(f"{binary_loss} {discrete_loss}")
-    return binary_loss + discrete_loss
+    return loss
 
 
 def take_from_attribute_tensor(attributes_tensor_src: torch.Tensor, static_attributes_src: List[str], static_attributes_dst: List[str]):
