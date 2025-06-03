@@ -42,7 +42,7 @@ def attributes_loss(attr_pred: torch.Tensor,
     num_attributes = len(static_attributes)
     loss = 0.0
     
-    if loss_type == "mixed":
+    if loss_type.startswith("mixed"):
         num_binary_attributes = get_num_binary_attributes(static_attributes)
         
         lambda_binary = num_binary_attributes / num_attributes
@@ -60,12 +60,15 @@ def attributes_loss(attr_pred: torch.Tensor,
                 
                 discrete_loss_attr = 0.0
                 if types[attr].dtype == float or types[attr].dtype == int:
-                    if dim > 1:
-                        discrete_loss_attr = torch.nn.functional.mse_loss(attr_pred[:,idx_off:idx_off+dim], attr_truth[:,idx_off:idx_off+dim])
-                        discrete_loss_attr = torch.sqrt(discrete_loss_attr)
-                    else:
-                        discrete_loss_attr = torch.nn.functional.l1_loss(attr_pred[:, idx_off:idx_off + dim], attr_truth[:, idx_off:idx_off + dim])
-                    #discrete_loss_attr = torch.nn.functional.mse_loss(attr_pred[:, idx_off:idx_off + dim], attr_truth[:, idx_off:idx_off + dim])
+                    if loss_type.endswith("_mse"):
+                        discrete_loss_attr = torch.nn.functional.mse_loss(attr_pred[:, idx_off:idx_off + dim], attr_truth[:, idx_off:idx_off + dim])
+                    else: # RMSE
+                        if dim > 1:
+                            discrete_loss_attr = torch.nn.functional.mse_loss(attr_pred[:,idx_off:idx_off+dim], attr_truth[:,idx_off:idx_off+dim])
+                            discrete_loss_attr = torch.sqrt(discrete_loss_attr)
+                        else:
+                            discrete_loss_attr = torch.nn.functional.l1_loss(attr_pred[:, idx_off:idx_off + dim], attr_truth[:, idx_off:idx_off + dim])
+                        #discrete_loss_attr = torch.nn.functional.mse_loss(attr_pred[:, idx_off:idx_off + dim], attr_truth[:, idx_off:idx_off + dim])
                     
                     attr_lambda = 1.0 # if attribute_lambdas is None or attr not in attribute_lambdas.keys() else attribute_lambdas[attr]
                     discrete_loss += discrete_loss_attr * attr_lambda
