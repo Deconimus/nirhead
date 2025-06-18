@@ -81,10 +81,15 @@ class ClassificationDataSet:
 
         label = deepcopy(self.labels[idx])
         
-        if flip and "gaze" in self.labelclasses:
-            attr_idx = stat.attribute_indices(self.labelclasses)["gaze"]
-            label[attr_idx + 1] *= -1.0
-        
+        if flip:
+            attr_indices = stat.attribute_indices(self.labelclasses)
+            if "gaze" in self.labelclasses:
+                attr_idx = attr_indices["gaze"]
+                label[attr_idx + 1] *= -1.0
+            if "lookdir" in self.labelclasses:
+                attr_idx = attr_indices["lookdir"]
+                label[attr_idx + 0] *= -1.0
+                
         return img, label
 
     def get_image_path(self, idx):

@@ -11,6 +11,7 @@ from gaussian_splatting.arguments import PipelineParams2
 from gaussian_splatting.gaussian_renderer import render
 from gaussian_splatting.scene.cameras import pose_to_rendercam
 from eg3d.training.training_loop import setup_snapshot_image_grid, save_image_grid
+from eg3d.camera_utils import LookAtPoseSampler
 
 from gghead.model_manager.finder import find_model_manager
 from gghead.constants import DEFAULT_INTRINSICS
@@ -75,21 +76,44 @@ def main(args):
     
 
 def render_grid(model, grid_size, attribute_gradient, dataset, rng, args, pbar):
+    focal_length = 4.2647
+    camera_pivot = torch.tensor(model.rendering_kwargs.get('avg_camera_pivot', (0, 0, 0)))
+    intrinsics = torch.tensor([[focal_length, 0, 0.5], [0, focal_length, 0.5], [0, 0, 1]])
+    
+    grid_rot = torch.zeros([grid_size[0] * grid_size[1], 2], device="cpu", dtype=torch.float32)
+    
     # Load c poses from dataset if provided:
-    if dataset:
+    pose_front = None
+    if dataset and args.virtualrotation is None:
         c_list = [dataset.get_label(idx) for idx in range(len(dataset))]
         random.shuffle(c_list)
         grid_c = torch.from_numpy(np.stack(c_list[:grid_size[0]*grid_size[1]], 0)).to(device)
     else:
+        max_rot = 5.0 if args.virtualrotation is None else args.virtualrotation
         pose_front = Pose(
             matrix_or_rotation=np.eye(3),
-            translation=(0, 0, 2.7),
+            translation=(0, 0, args.cam_z),
             pose_type=PoseType.CAM_2_WORLD,
             camera_coordinate_convention=CameraCoordinateConvention.OPEN_GL)
         c_front = torch.from_numpy(encode_camera_params(pose_front, DEFAULT_INTRINSICS)).to(device).unsqueeze(0)
-        poses = [pose_front.rotate_euler(order="XYZ", euler_y=math.radians(min(abs(i) * (5.0 / (grid_size[0] - 1 // 2)), 5.0) * (-1.0 if i < 0 else 1.0)), inplace=False) for i in range(-grid_size[0] // 2, grid_size[0] - (grid_size[0] // 2))]
         
-        c_list = [encode_camera_params(p, DEFAULT_INTRINSICS) for p in poses] * grid_size[1]
+        yaws = [min(abs(i) * (math.radians(max_rot) / (grid_size[0]/2)), math.radians(max_rot)) * (-1.0 if i < 0 else 1.0) for i in range(-(grid_size[0] // 2), grid_size[0] - (grid_size[0] // 2))]
+        for row in range(grid_size[1]):
+            for col in range(grid_size[0]):
+                grid_rot[row * grid_size[0] + col, 0] = yaws[col]
+        
+        if args.virtualrotation is None:
+            # poses = [pose_in.rotate_euler(order="XYZ", euler_y=math.radians(min(abs(i) * (max_rot / (grid_size[0] - 1 // 2)), max_rot) * (-1.0 if i < 0 else 1.0)), inplace=False) for i in range(-grid_size[0] // 2, grid_size[0] - (grid_size[0] // 2))]
+            # c_list = [encode_camera_params(p, DEFAULT_INTRINSICS) for p in poses] * grid_size[1]
+            c_list = []
+            for i, yaw in enumerate(yaws):
+                forward_cam2world_pose = LookAtPoseSampler.sample(3.14 / 2 + yaw, 3.14 / 2 + 0.0, camera_pivot, radius=args.cam_z)
+                c = torch.cat([forward_cam2world_pose.reshape(16), intrinsics.reshape(9)], 0)
+                c_list.append(c.cpu().numpy())
+            c_list = c_list * grid_size[1]
+        else:
+            c_list = [c_front.squeeze().cpu().numpy()] * grid_size[0] * grid_size[1]
+        
         grid_c = torch.from_numpy(np.stack(c_list, 0)).to(device)
         
     grid_z = torch.randn([grid_size[0] * grid_size[1], model.z_dim], device=rng.device, generator=rng).to(device)
@@ -130,6 +154,11 @@ def render_grid(model, grid_size, attribute_gradient, dataset, rng, args, pbar):
                             attr_val_x *= -1.0
                         grid_attr[row * grid_size[0] + col, grad_attr_idx + 1] = attr_val_x
                         #print(f"pitch={attr_val_y}, yaw={attr_val_x}")
+                        
+    elif args.virtualrotation is not None: # have same identity for each column of given row
+        for row in range(grid_size[1]):
+            for col in range(1, grid_size[0]):
+                grid_z[row * grid_size[0] + col, :] = grid_z[row * grid_size[0] + 0, :]
     
     if args.horizontal:
         grid_c    = torch.reshape(torch.transpose(torch.reshape(grid_c,    (grid_size[1], grid_size[0], grid_c.shape[1])),    0, 1), (grid_size[0] * grid_size[1], -1))
@@ -139,6 +168,7 @@ def render_grid(model, grid_size, attribute_gradient, dataset, rng, args, pbar):
     grid_c = grid_c.split(args.batch)
     grid_z = grid_z.split(args.batch)
     grid_attr = grid_attr.split(args.batch)
+    grid_rot = grid_rot.split(args.batch)
     
     images = []
     with torch.no_grad():
@@ -146,11 +176,20 @@ def render_grid(model, grid_size, attribute_gradient, dataset, rng, args, pbar):
             # idx = row*(grid_size[0]//args.batch)+col
             z = grid_z[idx]
             c = grid_c[idx]
-            attr = grid_attr[idx]
+            attr = grid_attr[idx] if attribute_gradient else None
+            rot = grid_rot[idx]
             
             w = model.mapping(z, c, attr, truncation_psi=0.7)
+            
+            # Set camera params
+            c = torch.zeros_like(c)
+            for bidx in range(c.shape[0]):
+                pose = LookAtPoseSampler.sample(3.14 / 2 + rot[bidx,0], 3.14 / 2 + rot[bidx,1], camera_pivot, radius=args.cam_z)
+                c[bidx] = torch.cat([pose.reshape(-1, 16), intrinsics.reshape(-1, 9)], 1).to(w.device)
+            
             output = model.synthesis(w, c, noise_mode='const', return_masks=False,
                                      neural_rendering_resolution=args.res,
+                                     sh_ref_cam=pose_front,
                                      return_uv_map=False)
             images += [PIL.ImageOps.grayscale(PIL.Image.fromarray(normalized_torch_to_numpy_img(output["image"][i, ...]))) for i in range(output["image"].shape[0])]
             pbar.update(1)
@@ -182,6 +221,8 @@ if __name__ == "__main__":
     parser.add_argument("--subgrids_x", type=int, default=1)
     parser.add_argument("--subgrids_y", type=int, default=1)
     parser.add_argument("--horizontal", action="store_true", default=False)
+    parser.add_argument("--virtualrotation", type=int, default=None) # turn camera around portrait virtually, instead of changing pose input to NIRHead
+    parser.add_argument("--cam_z", type=float, default=2.7)
     args = parser.parse_args()
     
     main(args)
