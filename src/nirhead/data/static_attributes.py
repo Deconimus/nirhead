@@ -61,6 +61,8 @@ def attributes_loss(attr_pred: torch.Tensor,
                 
                 discrete_loss_attr = 0.0
                 if types[attr].dtype == float or types[attr].dtype == int:
+                    #if attr == "lookdir":
+                    #    discrete_loss_attr = torch.linalg.vector_norm(torch.linalg.cross(attr_pred[:, idx_off:idx_off + dim], attr_truth[:, idx_off:idx_off + dim]))
                     if loss_type.endswith("_mse"):
                         discrete_loss_attr = torch.nn.functional.mse_loss(attr_pred[:, idx_off:idx_off + dim], attr_truth[:, idx_off:idx_off + dim])
                     else: # RMSE
