@@ -126,9 +126,10 @@ def render_grid_frame(model, dataset, grid_size, grid_z, grid_c, attr_val, args,
 def attribute_value_step(attr, t, speed):
     t *= speed * 0.5
     val = None
+    
     if attr == "eye_open":
         val = (math.cos(math.pi * t) + 1.0) * 0.5
-    elif attr == "gaze":
+    elif attr == "gaze" or attr == "lookdir":
         t = t % 7.5
         if t < 2.0:
             x = math.sin(math.pi * t) * (math.pi / 2)
@@ -139,7 +140,14 @@ def attribute_value_step(attr, t, speed):
         else:
             x = math.cos(math.pi * t) * (math.pi / 2)
             y = math.sin(math.pi * t) * (math.pi / 2)
-        val = [y, x]
+            
+        if attr == "lookdir":
+            dir_x = math.cos(y) * math.cos(x)
+            dir_y = math.sin(y)
+            dir_z = math.cos(y) * math.sin(x)
+            val = [dir_x, dir_y, dir_z]
+        else:
+            val = [y, x]
     
     tensor = torch.tensor(val, dtype=torch.float32, requires_grad=False, device=device)
     return tensor

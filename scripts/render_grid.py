@@ -124,12 +124,16 @@ def render_grid(model, grid_size, attribute_gradient, dataset, rng, args, pbar):
     
     if attribute_gradient:
         attr_indices = stat.attribute_indices(model._config.static_attributes)
-        
         grad_attr_idx = attr_indices[attribute_gradient]
-        grad_attr_dim = stat.types[attribute_gradient].dim
-        grad_fun = lambda x, size: (x * (stat.types[attribute_gradient].high - stat.types[attribute_gradient].low)) / (size - 1) + stat.types[attribute_gradient].low
         
-        if stat.types[attribute_gradient].dtype == bool:
+        attr = attribute_gradient
+        if attribute_gradient == "lookdir":
+            attr = "gaze"  # will be translated
+        
+        grad_attr_dim = stat.types[attr].dim
+        grad_fun = lambda x, size: (x * (stat.types[attr].high - stat.types[attr].low)) / (size - 1) + stat.types[attr].low
+        
+        if stat.types[attr].dtype == bool:
             for row in range(grid_size[1] // 2):
                 for col in range(grid_size[0]):
                     grid_z[(row * 2 + 1) * grid_size[0] + col, :] = grid_z[(row * 2) * grid_size[0] + col, :]  # copy z vals
@@ -137,7 +141,7 @@ def render_grid(model, grid_size, attribute_gradient, dataset, rng, args, pbar):
                     grid_attr[(row * 2 + 1) * grid_size[0] + col, :] = grid_attr[(row * 2) * grid_size[0] + col, :]  # copy attr vals
                     grid_attr[(row * 2) * grid_size[0] + col, grad_attr_idx] = 0.0
                     grid_attr[(row * 2 + 1) * grid_size[0] + col, grad_attr_idx] = 1.0
-        elif stat.types[attribute_gradient].dtype == float:
+        elif stat.types[attr].dtype == float:
             for row in range(1 if grad_attr_dim <= 1 else 0, grid_size[1]):
                 for col in range(grid_size[0]):
                     src_col = col if grad_attr_dim <= 1 else 0
@@ -150,10 +154,20 @@ def render_grid(model, grid_size, attribute_gradient, dataset, rng, args, pbar):
                     grid_attr[row * grid_size[0] + col, grad_attr_idx] = attr_val_y
                     if grad_attr_dim > 1:
                         attr_val_x = grad_fun(col, grid_size[0])
-                        if attribute_gradient == "gaze":
+                        if attr == "gaze":
                             attr_val_x *= -1.0
                         grid_attr[row * grid_size[0] + col, grad_attr_idx + 1] = attr_val_x
                         #print(f"pitch={attr_val_y}, yaw={attr_val_x}")
+            if attribute_gradient == "lookdir" and attr == "gaze":
+                for row in range(grid_size[1]):
+                    for col in range(grid_size[0]):
+                        pitch = grid_attr[row*grid_size[0]+col, grad_attr_idx + 0].item()
+                        yaw = grid_attr[row*grid_size[0]+col, grad_attr_idx + 1].item()
+                        dir_x = math.cos(pitch) * math.cos(yaw)
+                        dir_y = math.sin(pitch)
+                        dir_z = math.cos(pitch) * math.sin(yaw)
+                        direction = torch.tensor([dir_x, dir_y, dir_z], device=device)
+                        grid_attr[row * grid_size[0] + col, grad_attr_idx:grad_attr_idx+3] = (direction / torch.linalg.norm(direction)) if not torch.linalg.norm(direction) == 0 else direction
                         
     elif args.virtualrotation is not None: # have same identity for each column of given row
         for row in range(grid_size[1]):
