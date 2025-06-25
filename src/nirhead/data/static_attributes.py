@@ -61,9 +61,14 @@ def attributes_loss(attr_pred: torch.Tensor,
                 
                 discrete_loss_attr = 0.0
                 if types[attr].dtype == float or types[attr].dtype == int:
-                    #if attr == "lookdir":
-                    #    discrete_loss_attr = torch.linalg.vector_norm(torch.linalg.cross(attr_pred[:, idx_off:idx_off + dim], attr_truth[:, idx_off:idx_off + dim]))
-                    if loss_type.endswith("_mse"):
+                    if attr == "lookdir": # batch-wise dot product of direction vectors
+                        pred = attr_pred[:, idx_off:idx_off + dim] / torch.linalg.vector_norm(attr_pred[:, idx_off:idx_off + dim])
+                        truth = attr_truth[:, idx_off:idx_off + dim] / torch.linalg.vector_norm(attr_truth[:, idx_off:idx_off + dim])
+                        discrete_loss_attr = torch.bmm(pred.view(attr_pred.shape[0], 1, dim), truth.view(attr_pred.shape[0], dim, 1)).sum()
+                        discrete_loss_attr = torch.pow(discrete_loss_attr - 1, 2)
+                        # mixing it with MSE loss:
+                        discrete_loss_attr += torch.nn.functional.mse_loss(attr_pred[:, idx_off:idx_off + dim], attr_truth[:, idx_off:idx_off + dim])
+                    elif loss_type.endswith("_mse"):
                         discrete_loss_attr = torch.nn.functional.mse_loss(attr_pred[:, idx_off:idx_off + dim], attr_truth[:, idx_off:idx_off + dim])
                     else: # RMSE
                         if dim > 1:
