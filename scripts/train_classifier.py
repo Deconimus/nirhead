@@ -21,6 +21,7 @@ def main(args):
 
     dl_workers = multiprocessing.cpu_count() if not args.dataset.lower().endswith(".zip") else 1
     label_classes = stat.normalize_attributes_list(args.labels)
+    args.labels = label_classes
     
     assert(os.path.exists(args.dataset))
     
