@@ -16,11 +16,13 @@ class StaticAttributeTypeInfo:
     
 
 types_list = [
-    StaticAttributeTypeInfo("bright_pupil", "bp", bool,  1),
-    StaticAttributeTypeInfo("glasses",      "gl", bool,  1),
-    StaticAttributeTypeInfo("eye_open",     "eo", float, 1, low=0.0, high=1.0),
-    StaticAttributeTypeInfo("gaze",         "gz", float, 2, low=(-math.tau/4), high=(math.tau/4)),
-    StaticAttributeTypeInfo("lookdir",      "ld", float, 3, low=-1.0, high=1.0),
+    StaticAttributeTypeInfo("bright_pupil",     "bp",  bool,  1),
+    StaticAttributeTypeInfo("glasses",          "gl",  bool,  1),
+    StaticAttributeTypeInfo("eye_open",         "eo",  float, 1, low=0.0, high=1.0),
+    StaticAttributeTypeInfo("gaze",             "gz",  float, 2, low=(-math.tau/4), high=(math.tau/4)),
+    StaticAttributeTypeInfo("lookdir",          "ld",  float, 3, low=-1.0, high=1.0),
+    StaticAttributeTypeInfo("facial_hair",      "fh",  bool,  1),
+    StaticAttributeTypeInfo("facial_hair_cont", "fhc", float, 1, low=0.0, high=1.0),
 ]
 types = { attr.name: attr for attr in types_list }
 _types_indices = { attr.name: idx for idx, attr in enumerate(types_list) }
