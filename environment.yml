@@ -29,6 +29,12 @@ dependencies:
   - gxx_linux-64
   - gcc_linux-64
 
+  - imageio
+  - matplotlib
+  - pandas
+  - pillow
+  - termcolor
+
   - pip:
       - tyro
       - environs
@@ -39,6 +45,7 @@ dependencies:
       - wandb
       - pytorch_lightning
       - torchsummary
+      - tqdm
 
       # For EG3D visualizer
       - eg3d@git+https://github.com/Deconimus/eg3d.git
@@ -52,4 +59,11 @@ dependencies:
       - torch-summary
       - vit-pytorch
       - dacite
+      - imageio
       - imageio_ffmpeg
+
+      - gpustat
+      - psutil
+      - gin-config==0.3.0
+      - tensorboardx
+      - kornia
