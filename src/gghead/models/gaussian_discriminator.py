@@ -97,6 +97,7 @@ class GaussianDiscriminator(nn.Module):
         self.use_dual_discrimination = config.use_dual_discrimination
         self.block_resolutions = [2 ** i for i in range(self.img_resolution_log2, 2, -1)]
         channels_dict = {res: min(config.channel_base // res, config.channel_max) for res in self.block_resolutions + [4]}
+        self.channels_dict = channels_dict
         fp16_resolution = max(2 ** (self.img_resolution_log2 + 1 - config.num_fp16_res), 8)
 
         if config.cmap_dim is None:
