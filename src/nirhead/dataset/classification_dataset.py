@@ -15,7 +15,8 @@ class ClassificationDataSet:
             self.root = pathlib.Path(self.root)
         self.resolution = resolution
         self.mode = mode.strip().lower().replace("l", "gray").replace("bgr", "rgb")
-        self.labelclasses = labelclasses
+        self.labelclasses = stat.normalize_attributes_list(labelclasses)
+        self.labels = None
         self.subdir = subdir.strip()
         self.flip = flip
         self.inference = inference
@@ -36,7 +37,7 @@ class ClassificationDataSet:
             self.images = [str(f.absolute())[len(str(self.root.absolute()))+1:].replace("\\", "/") for f in (self.root / self.subdir).rglob("*.png")]
 
         labeldata = {}
-        if not self.inference:
+        if not self.inference and self.labelclasses is not None:
             with self._open_file("labels.json") as f:
                 labeldata = json.load(f)
             self.labels = []
@@ -79,7 +80,7 @@ class ClassificationDataSet:
         if self.inference:
             return img
 
-        label = deepcopy(self.labels[idx])
+        label = deepcopy(self.labels[idx]) if self.labels is not None else None
         
         if flip:
             attr_indices = stat.attribute_indices(self.labelclasses)

@@ -20,6 +20,7 @@ import nirhead.data.static_attributes as stat
 class IdentifierConfig(Config):
     synth_model: str = None
     latent_z_dim: int = 512
+    pose_c_dim: int = 25
     img_res: int = 256
     img_ch: int = 1
     mbstd_group_size: int = 4
@@ -37,7 +38,7 @@ class IdentifierGenerator(GaussianDiscriminator):
         self.fromrgb = Conv2dLayer(cfg.img_ch, in_channels, kernel_size=1, activation=activation)
         self.mbstd = MinibatchStdLayer(group_size=cfg.mbstd_group_size, num_channels=cfg.mbstd_num_channels) if cfg.mbstd_num_channels > 0 else None
         self.conv = Conv2dLayer(in_channels + cfg.mbstd_num_channels, in_channels, kernel_size=3, activation=activation, conv_clamp=conv_clamp)
-        self.fc = FullyConnectedLayer(in_channels * (resolution ** 2), cfg.latent_z_dim, activation=activation)
+        self.fc = FullyConnectedLayer(in_channels * (resolution ** 2), cfg.latent_z_dim + cfg.pose_c_dim, activation=activation)
         #self.out = FullyConnectedLayer(cfg.latent_z_dim, cfg.latent_z_dim)
         
     def forward(self, img: Dict, c, update_emas=False, alpha_new_layers: float = 1, **block_kwargs):
@@ -65,7 +66,13 @@ class IdentifierGenerator(GaussianDiscriminator):
         x = self.fc(x.flatten(1))
         #x = self.out(x)
         
-        return x
+        z = x[:self.cfg.latent_z_dim]
+        c = x[self.cfg.latent_z_dim:]
+        
+        assert(z.shape[0] == self.cfg.latent_z_dim)
+        assert(c.shape[0] == self.cfg.pose_c_dim)
+        
+        return z, c
     
 
 class Identifier(nn.Module):
@@ -105,8 +112,8 @@ class Identifier(nn.Module):
             num_fp16_res = 4,  # Use FP16 for the N highest resolutions.
             conv_clamp = 256,  # Clamp the output of convolution layers to +-X, None = disable clamping.
             disc_c_noise = 0,
-            c_dim = 32,
-            cmap_dim = 16, # Dimensionality of mapped conditioning label, None = default.
+            c_dim = 8, # Conditioning vector input dimensionality
+            cmap_dim = 16, # Dimensionality of mapped conditioning label (output), None = default.
             img_resolution = cfg.img_res,
             img_channels = cfg.img_ch,
         )
@@ -115,15 +122,22 @@ class Identifier(nn.Module):
     def forward(self, img: torch.Tensor):
         return self.G(img)
     
-    def discriminate(self, img: torch.Tensor, subject_label: str):
-        # create sha256 hash of subject string label, map to tensor with each byte interpreted as float32 in value range [-1,1]
-        subject_hash = torch.from_numpy(np.frombuffer(hashlib.sha256(subject_label.encode("utf-8")), dtype=np.uint8).astype(np.float32) / 127.5 - 1.0)
+    def discriminate(self, img: torch.Tensor, subject_labels: List[int]):
+        subject_hash = create_subject_hash(subject_labels)
         if device is not None:
             subject_hash = subject_hash.to(device)
         return self.D(img={"image": img}, c=subject_hash)
     
+    # adjust c_dim in discriminator when changing this function!
+    def create_subject_hash(self, subject_labels: int):
+        # create sha256 hash of subject string label, map to tensor with each byte interpreted as float32 in value range [-1,1]
+        #subject_hash = torch.from_numpy(np.frombuffer(hashlib.sha256(subject_label.encode("utf-8")), dtype=np.uint8).astype(np.float32) / 127.5 - 1.0)
+        
+        # binary encoding of subject number
+        subject_hashes = [troch.array([float(c) for c in bin(subject_label)[2:].zfill(8)], dtype=torch.float32) for subject_label in subject_labels]
+        return torch.stack(subject_hashes, dim=0)
+        
     
-
 def load_identifier_model(cfg: ClassifierConfig, device: str, weights_file=None):
     model = Identifier(cfg=cfg, device=device)
     name = "identifier_"+pathlib.Path(cfg.synth_model).name+"_"+str(int(time.time()))

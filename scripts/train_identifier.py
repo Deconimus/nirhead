@@ -6,8 +6,16 @@ from timeit import default_timer as timer
 from torch.utils.data import DataLoader
 from dataclasses import asdict
 
+from gghead.model_manager.finder import find_model_manager
+
 from nirhead.models import classifier, identifier
+from nirhead.dataset.identification_dataset import IdentifierDataSet
 import nirhead.data.static_attributes as stat
+
+
+REAL_LABEL = 1.0
+FAKE_LABEL = 0.0
+
 
 def main(args):
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
@@ -19,8 +27,8 @@ def main(args):
     
     assert (os.path.exists(args.dataset))
     
-    trainset = IdentifierDataSet(args.dataset, subdir="train", resolution=args.img_res, mode="gray")#, labelclasses=label_classes)
-    testset = IdentifierDataSet(args.dataset, subdir="test", resolution=args.img_res, mode="gray")#, labelclasses=label_classes)
+    trainset = IdentifierDataSet(args.dataset, subdir="train", resolution=args.img_res, mode="gray", flip=False)#, labelclasses=label_classes)
+    testset = IdentifierDataSet(args.dataset, subdir="test", resolution=args.img_res, mode="gray", flip=False)#, labelclasses=label_classes)
     dl_train = DataLoader(trainset, batch_size=args.batch_size, shuffle=True, num_workers=dl_workers, drop_last=True)
     dl_test = DataLoader(testset, batch_size=args.batch_size, shuffle=False, num_workers=dl_workers, drop_last=False)
     
@@ -36,15 +44,22 @@ def main(args):
         model_cfg = identifier.IdentifierConfig.from_dict(dict(vars(args)))
         model, name = identifier.load_identifier_model(model_cfg, device)
     
+    model_manager = find_model_manager(args.nirhead_model)
+    checkpoint = model_manager._resolve_checkpoint_id(-1)
+    print(f"Loading {args.nirhead_model} at checkpoint {checkpoint}")
+    nirhead_model = model_manager.load_checkpoint(checkpoint, load_ema=True).to(device)
+    nirhead_model.requires_grad_(False)
+    
     if args.dst is not None:
         dst_dir = pathlib.Path(args.dst)
     else:
         dst_dir = pathlib.Path(args.savedir) / name
     
-    optimizer = torch.optim.Adam(params=model.parameters(), lr=0.0001)
+    optimizerG = torch.optim.Adam(params=model.G.parameters(), lr=0.0001)
+    optimizerD = torch.optim.Adam(params=model.D.parameters(), lr=0.0001)
     train_time_start = timer()
     
-    data = {"train_loss": [], "test_loss": [], "trainsets": []}
+    data = {"train_loss_D": [], "train_loss_G": [], "train_acc": [], "train_D_x": [], "train_D_G_z1": [], "train_D_G_z2": [], "test_loss_D": [], "test_loss_G": [], "test_acc": [], "trainsets": []}
     if args.resume:
         history_file = pathlib.Path(args.resume) / "history.json"
         if not os.path.isfile(history_file) or not os.path.exists(history_file):
@@ -57,24 +72,32 @@ def main(args):
     epochs_trained = 0
     try:
         for epoch in range(args.epochs):
-            with tqdm(total=(len(trainset) // args.batch_size) + int(math.ceil(len(testset) / args.batch_size)), leave=False) as pbar:
-                train_loss = train_step(dl_train, model, optimizer, device, pbar)
-                test_loss = test_step(dl_test, model, device, pbar)
+            #with tqdm(total=(len(trainset) // args.batch_size) + int(math.ceil(len(testset) / args.batch_size)), leave=False) as pbar:
+            with tqdm(total=len(trainset) // args.batch_size, leave=False) as pbar:
+                train_loss_D, train_loss_G, train_acc, train_D_x, train_D_G_z1, train_D_G_z2 = train_step(dl_train, model, nirhead_model, optimizerG, optimizerD, device, pbar)
+                #test_loss_D, test_loss_G, test_acc = test_step(dl_test, model, nirhead_model, device, pbar)
             
             print(
-                f"Epoch {epoch:04} | Train: (loss={train_loss:.6f})" +
-                f" | Test (loss={test_loss:.6f})" +
+                f"Epoch {epoch:04} | Train: (loss_D={train_loss_D:.6f}, loss_G={train_loss_G:.6f}, acc={train_acc:.6f}, D_x={train_D_x:.6f}, D_G_z1={train_D_G_z1:.6f}, D_G_z2={train_D_G_z2:.6f})" +
+                #f" | Test (loss_D={test_loss_D:.6f}, loss_G={test_loss_G:.6f}, acc={test_acc:.6f}))" +
                 f" | CUDA alloc: {torch.cuda.memory_allocated(0) / (2 ** 30):.3f}GB, rsrvd: {torch.cuda.memory_reserved(0) / (2 ** 30):.3}GB")
             
-            data["train_loss"].append(float(train_loss))
-            data["test_loss"].append(float(test_loss))
+            data["train_loss_D"].append(float(train_loss_D))
+            data["train_loss_G"].append(float(train_loss_G))
+            data["train_acc"].append(float(train_acc))
+            data["train_D_x"].append(float(train_D_x))
+            data["train_D_G_z1"].append(float(train_D_G_z1))
+            data["train_D_G_z2"].append(float(train_D_G_z2))
+            #data["test_loss_D"].append(float(test_loss_D))
+            #data["test_loss_G"].append(float(test_loss_G))
+            #data["test_acc"].append(float(test_acc))
             
             if args.stop_at_train_loss and train_loss <= args.stop_at_train_loss:
                 print(f"Train loss goal reached, stopping training at train_loss={train_loss}")
                 break
-            if args.stop_at_test_loss and test_loss <= args.stop_at_test_loss:
-                print(f"Test loss goal reached, stopping training at test_loss={test_loss}")
-                break
+            #if args.stop_at_test_loss and test_loss <= args.stop_at_test_loss:
+            #    print(f"Test loss goal reached, stopping training at test_loss={test_loss}")
+            #    break
             if (epoch + 1) % 100 == 0 and (args.savedir or args.dst):
                 save_log(data, dst_dir, "history")
             epochs_trained = epoch + 1
@@ -112,6 +135,101 @@ def main(args):
         print("Saved model arguments: " + str(args_file))
 
 
+def train_step(data_loader, model, nirhead_model, optimizerG, optimizerD, device, pbar):
+    train_loss_D, train_loss_G, train_acc, train_D_x, train_D_G_z1, train_D_G_z2 = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+    for batch, (real_imgs, _, subj_labels) in enumerate(data_loader):
+        real_imgs = real_imgs.to(device)
+        
+        # see: https://docs.pytorch.org/tutorials/beginner/dcgan_faces_tutorial.html
+        
+        optimizerD.zero_grad()
+        
+        # -- D train step --
+        # real image batch:
+        
+        label = torch.full((real_imgs.size[0],), REAL_LABEL, dtype=torch.float32, device=device)
+        
+        logits = model.discriminate(real_imgs, subj_labels)
+        loss_Dreal = torch.binary_cross_entropy_with_logits(logits, label)
+        loss_Dreal.backward()
+        D_x = d_logits.mean().item()
+        
+        # fake image batch:
+        
+        z, c = model(real_imgs)
+        
+        with torch.no_grad():
+            w = nirhead_model.mapping(z, c, attr, truncation_psi=0.7)
+            nirhead_output = nirhead_model.synthesis(w, c, noise_mode='const', return_masks=False,
+                                             neural_rendering_resolution=args.res,
+                                             return_uv_map=False)
+            fake_imgs = nirhead_output["image"]
+        
+        label.fill_(FAKE_LABEL)
+        
+        logits = model.discriminate(fake_imgs.detach(), subj_labels)
+        loss_Dfake = torch.binary_cross_entropy_with_logits(logits, label)
+        loss_Dfake.backward()
+        
+        D_G_z1 = d_logits.mean().item()
+        loss_D = loss_Dreal + loss_Dfake
+        
+        optimizerD.step()
+        
+        # -- G train step --
+        
+        optimizerG.zero_grad()
+        label.fill_(REAL_LABEL)
+        
+        logits = model.discriminate(fake_imgs, subj_labels)
+        loss_G = torch.binary_cross_entropy_with_logits(logits, label)
+        loss_G.backward()
+        
+        D_G_z2 = logits.mean().item()
+        
+        optimizerG.step()
+        
+        train_loss_D += loss_D.item()
+        train_loss_G += loss_G.item()
+        train_D_x += D_x
+        train_D_G_z1 += D_G_z1
+        train_D_G_z2 += D_G_z2
+        
+        pbar.update(1)
+    
+    train_loss_D /= len(data_loader)
+    train_loss_G /= len(data_loader)
+    train_acc /= len(data_loader)
+    train_D_x /= len(data_loader)
+    train_D_G_z1 /= len(data_loader)
+    train_D_G_z2 /= len(data_loader)
+    return train_loss_D, train_loss_G, train_acc, train_D_x, train_D_G_z1, train_D_G_z2
+
+
+def test_step(data_loader, model, nirhead_model, device, pbar):
+    test_loss_D, test_loss_G, test_acc = 0.0, 0.0, 0.0
+    model.eval()  # evaluation mode
+    
+    with torch.inference_mode():
+        for batch, (x, y) in enumerate(data_loader):
+            x, y = x.to(device), y.to(device)
+            
+            #y_pred = model(x)
+            
+            #test_loss += stat.attributes_loss(y_pred, y, loss_type=loss_type)
+            #test_acc += calc_accuracy(y_pred=y_pred, y_true=y, static_attributes=static_attributes)
+            
+            pbar.update(1)
+        
+        test_loss_D /= len(data_loader)
+        test_loss_G /= len(data_loader)
+        test_acc /= len(data_loader)
+        return test_loss_D, test_loss_G, test_acc
+    
+    
+def run_identifier(model, nirhead_model, x):
+    pass
+
 def save_log(data, logdir, name):
     os.makedirs(logdir, exist_ok=True)
     dst_file = logdir / (name + ".json")
@@ -124,7 +242,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-d", "--dataset", type=str)
     parser.add_argument("--model", type=str, default=None)
-    parser.add_argument("-b", "--batch_size", type=int, default=128)
+    parser.add_argument("--nirhead_model", type=str, default=None)
+    parser.add_argument("-b", "--batch_size", type=int, default=4)
     parser.add_argument("-e", "--epochs", type=int, default=100)
     #parser.add_argument("--flip_aug", action="store_true", default=False)
     parser.add_argument("--loss", type=str, default="mixed")
