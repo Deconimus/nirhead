@@ -64,7 +64,7 @@ class ClassificationDataSet:
                 assert(len(l) == stat.attributes_dim(self.labelclasses))
                 self.labels.append(np.array(l, dtype=np.float32))
 
-        assert(self.inference or len(self.images) == len(self.labels))
+        assert(self.inference or self.labelclasses is None or len(self.images) == len(self.labels))
         
 
     def __len__(self):

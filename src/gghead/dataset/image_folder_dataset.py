@@ -1,4 +1,4 @@
-import json, os, zipfile, functools
+import json, os, zipfile, functools, random
 from dataclasses import dataclass, replace, asdict
 from pathlib import Path
 from typing import Optional, Tuple, Literal, Union
@@ -202,6 +202,10 @@ class GGHeadImageFolderDataset(Dataset):
         raw_idx = int(self._raw_idx[idx])
         img_fname = self._image_fnames[raw_idx]
         labels = self._load_static_attribute_labels()[img_fname]
+        if not "facial_hair" in labels.keys():
+            labels["facial_hair"] = bool(raw_idx % 2)
+        if not "facial_hair_cont" in labels.keys():
+            labels["facial_hair_cont"] = random.randint(0, 100) * 0.01
         
         list_flatten_reduce = lambda x,y: (x if isinstance(x, list) else [x]) + (y if isinstance(y, list) else [y])
         attr = np.array([float(x) for x in functools.reduce(list_flatten_reduce, [labels[cls] for cls in self._config.static_attributes], [])], dtype=np.float32)

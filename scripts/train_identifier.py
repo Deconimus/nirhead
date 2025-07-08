@@ -1,15 +1,16 @@
-import os, gc, argparse, pathlib, multiprocessing, json, math
-import torch
+import os, gc, argparse, pathlib, multiprocessing, json, math, PIL.Image, PIL.ImageOps
+import torch, torchvision
 from tqdm import tqdm
 from torch import nn
 from timeit import default_timer as timer
 from torch.utils.data import DataLoader
 from dataclasses import asdict
+from dreifus.image import normalized_torch_to_numpy_img
 
 from gghead.model_manager.finder import find_model_manager
 
 from nirhead.models import classifier, identifier
-from nirhead.dataset.identification_dataset import IdentifierDataSet
+from nirhead.dataset.identification_dataset import IdentificationDataSet
 import nirhead.data.static_attributes as stat
 
 
@@ -27,13 +28,13 @@ def main(args):
     
     assert (os.path.exists(args.dataset))
     
-    trainset = IdentifierDataSet(args.dataset, subdir="train", resolution=args.img_res, mode="gray", flip=False)#, labelclasses=label_classes)
-    testset = IdentifierDataSet(args.dataset, subdir="test", resolution=args.img_res, mode="gray", flip=False)#, labelclasses=label_classes)
+    trainset = IdentificationDataSet(args.dataset, subdir="train", resolution=args.img_res, mode="gray", flip=False, strict_pose=True)#, labelclasses=label_classes)
+    testset = IdentificationDataSet(args.dataset, subdir="test", resolution=args.img_res, mode="gray", inference=True, flip=False)#, labelclasses=label_classes)
     dl_train = DataLoader(trainset, batch_size=args.batch_size, shuffle=True, num_workers=dl_workers, drop_last=True)
     dl_test = DataLoader(testset, batch_size=args.batch_size, shuffle=False, num_workers=dl_workers, drop_last=False)
     
     print(f"Trainset size: {len(trainset)} ({len(trainset) // args.batch_size} batches of {args.batch_size})")
-    print(f"Testset size: {len(testset)} ({len(testset) // args.batch_size} batches of {args.batch_size})")
+    #print(f"Testset size: {len(testset)} ({len(testset) // args.batch_size} batches of {args.batch_size})")
     
     if args.resume:
         model, name = identifier.load_identifier_model_dir(args.resume, device)
@@ -44,9 +45,9 @@ def main(args):
         model_cfg = identifier.IdentifierConfig.from_dict(dict(vars(args)))
         model, name = identifier.load_identifier_model(model_cfg, device)
     
-    model_manager = find_model_manager(args.nirhead_model)
+    model_manager = find_model_manager(args.synth_model)
     checkpoint = model_manager._resolve_checkpoint_id(-1)
-    print(f"Loading {args.nirhead_model} at checkpoint {checkpoint}")
+    print(f"Loading {args.synth_model} at checkpoint {checkpoint}")
     nirhead_model = model_manager.load_checkpoint(checkpoint, load_ema=True).to(device)
     nirhead_model.requires_grad_(False)
     
@@ -54,9 +55,12 @@ def main(args):
         dst_dir = pathlib.Path(args.dst)
     else:
         dst_dir = pathlib.Path(args.savedir) / name
+    grids_dir = dst_dir / "grids"
     
     optimizerG = torch.optim.Adam(params=model.G.parameters(), lr=0.0001)
     optimizerD = torch.optim.Adam(params=model.D.parameters(), lr=0.0001)
+    criterion = torch.nn.BCEWithLogitsLoss()
+    
     train_time_start = timer()
     
     data = {"train_loss_D": [], "train_loss_G": [], "train_acc": [], "train_D_x": [], "train_D_G_z1": [], "train_D_G_z2": [], "test_loss_D": [], "test_loss_G": [], "test_acc": [], "trainsets": []}
@@ -71,11 +75,13 @@ def main(args):
     
     epochs_trained = 0
     try:
+        test_grid(0, dl_test, model, nirhead_model, grids_dir, device, args)
         for epoch in range(args.epochs):
             #with tqdm(total=(len(trainset) // args.batch_size) + int(math.ceil(len(testset) / args.batch_size)), leave=False) as pbar:
             with tqdm(total=len(trainset) // args.batch_size, leave=False) as pbar:
-                train_loss_D, train_loss_G, train_acc, train_D_x, train_D_G_z1, train_D_G_z2 = train_step(dl_train, model, nirhead_model, optimizerG, optimizerD, device, pbar)
+                train_loss_D, train_loss_G, train_acc, train_D_x, train_D_G_z1, train_D_G_z2 = train_step(dl_train, model, nirhead_model, optimizerG, optimizerD, criterion, device, args, pbar)
                 #test_loss_D, test_loss_G, test_acc = test_step(dl_test, model, nirhead_model, device, pbar)
+                test_grid(epoch+1, dl_test, model, nirhead_model, grids_dir, device, args)
             
             print(
                 f"Epoch {epoch:04} | Train: (loss_D={train_loss_D:.6f}, loss_G={train_loss_G:.6f}, acc={train_acc:.6f}, D_x={train_D_x:.6f}, D_G_z1={train_D_G_z1:.6f}, D_G_z2={train_D_G_z2:.6f})" +
@@ -135,10 +141,11 @@ def main(args):
         print("Saved model arguments: " + str(args_file))
 
 
-def train_step(data_loader, model, nirhead_model, optimizerG, optimizerD, device, pbar):
+def train_step(data_loader, model, nirhead_model, optimizerG, optimizerD, criterion, device, args, pbar):
     train_loss_D, train_loss_G, train_acc, train_D_x, train_D_G_z1, train_D_G_z2 = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
-    for batch, (real_imgs, _, subj_labels) in enumerate(data_loader):
+    for batch, (real_imgs, subj_labels, real_c) in enumerate(data_loader):
         real_imgs = real_imgs.to(device)
+        real_c = real_c.to(device)
         
         # see: https://docs.pytorch.org/tutorials/beginner/dcgan_faces_tutorial.html
         
@@ -147,31 +154,32 @@ def train_step(data_loader, model, nirhead_model, optimizerG, optimizerD, device
         # -- D train step --
         # real image batch:
         
-        label = torch.full((real_imgs.size[0],), REAL_LABEL, dtype=torch.float32, device=device)
+        label = torch.full((real_imgs.size(0),), REAL_LABEL, dtype=torch.float32, device=device)
         
         logits = model.discriminate(real_imgs, subj_labels)
-        loss_Dreal = torch.binary_cross_entropy_with_logits(logits, label)
+        loss_Dreal = criterion(logits, label)
         loss_Dreal.backward()
-        D_x = d_logits.mean().item()
+        D_x = logits.mean().item()
         
         # fake image batch:
         
-        z, c = model(real_imgs)
+        z, fake_c = model(real_imgs)
         
         with torch.no_grad():
-            w = nirhead_model.mapping(z, c, attr, truncation_psi=0.7)
-            nirhead_output = nirhead_model.synthesis(w, c, noise_mode='const', return_masks=False,
-                                             neural_rendering_resolution=args.res,
+            w = nirhead_model.mapping(z, real_c, None, truncation_psi=0.7)
+            nirhead_output = nirhead_model.synthesis(w, real_c, noise_mode='const', return_masks=False,
+                                             neural_rendering_resolution=args.img_res,
                                              return_uv_map=False)
             fake_imgs = nirhead_output["image"]
+            fake_imgs = torchvision.transforms.functional.rgb_to_grayscale(fake_imgs, num_output_channels=1)
         
         label.fill_(FAKE_LABEL)
         
         logits = model.discriminate(fake_imgs.detach(), subj_labels)
-        loss_Dfake = torch.binary_cross_entropy_with_logits(logits, label)
+        loss_Dfake = criterion(logits, label)
         loss_Dfake.backward()
         
-        D_G_z1 = d_logits.mean().item()
+        D_G_z1 = logits.mean().item()
         loss_D = loss_Dreal + loss_Dfake
         
         optimizerD.step()
@@ -182,7 +190,8 @@ def train_step(data_loader, model, nirhead_model, optimizerG, optimizerD, device
         label.fill_(REAL_LABEL)
         
         logits = model.discriminate(fake_imgs, subj_labels)
-        loss_G = torch.binary_cross_entropy_with_logits(logits, label)
+        loss_G = criterion(logits, label)
+        loss_G += torch.nn.functional.mse_loss(fake_c, real_c)
         loss_G.backward()
         
         D_G_z2 = logits.mean().item()
@@ -226,9 +235,48 @@ def test_step(data_loader, model, nirhead_model, device, pbar):
         test_acc /= len(data_loader)
         return test_loss_D, test_loss_G, test_acc
     
+
+def test_grid(epoch, data_loader, model, nirhead_model, grids_dir, device, args):
+    grid_real_imgs = []
+    grid_fake_imgs_realc = []
+    grid_fake_imgs_fakec = []
     
-def run_identifier(model, nirhead_model, x):
-    pass
+    with torch.inference_mode():
+        for batch, (real_imgs, real_c) in enumerate(data_loader):
+            real_imgs = real_imgs.to(device)
+            real_c = real_c.to(device)
+            
+            z, fake_c = model(real_imgs)
+            
+            grid_real_imgs += [PIL.Image.fromarray(normalized_torch_to_numpy_img(real_imgs[i].repeat(3, 1, 1))) for i in range(real_imgs.shape[0])]
+            
+            # images synthesized with generated pose c
+            w = nirhead_model.mapping(z, fake_c, None, truncation_psi=0.7)
+            nirhead_output = nirhead_model.synthesis(w, fake_c, noise_mode='const', return_masks=False,
+                                                     neural_rendering_resolution=args.img_res,
+                                                     return_uv_map=False)
+            fake_imgs = nirhead_output["image"]
+            grid_fake_imgs_fakec += [PIL.ImageOps.grayscale(PIL.Image.fromarray(normalized_torch_to_numpy_img(fake_imgs[i]))) for i in range(fake_imgs.shape[0])]
+            
+            # images synthesized with real pose c
+            w = nirhead_model.mapping(z, real_c, None, truncation_psi=0.7)
+            nirhead_output = nirhead_model.synthesis(w, real_c, noise_mode='const', return_masks=False,
+                                                     neural_rendering_resolution=args.img_res,
+                                                     return_uv_map=False)
+            fake_imgs = nirhead_output["image"]
+            grid_fake_imgs_realc += [PIL.ImageOps.grayscale(PIL.Image.fromarray(normalized_torch_to_numpy_img(fake_imgs[i]))) for i in range(fake_imgs.shape[0])]
+    
+    os.makedirs(grids_dir, exist_ok=True)
+    num_cols, num_rows = 16, 4
+    
+    for grid_fake_imgs, infix in [(grid_fake_imgs_realc, "real_c"), (grid_fake_imgs_fakec, "fake_c")]:
+        grid_image = PIL.Image.new("L", (num_cols * args.img_res, num_rows * 2 * args.img_res), 0)
+        for idx, (real_img, fake_img) in enumerate(zip(grid_real_imgs, grid_fake_imgs)):
+            grid_image.paste(real_img, box=((idx % num_cols) * args.img_res, (idx // num_cols) * 2 * args.img_res))
+            grid_image.paste(fake_img, box=((idx % num_cols) * args.img_res, ((idx // num_cols) * 2 + 1) * args.img_res))
+        
+        grid_image.save(grids_dir / ("grid_"+infix+"_"+str(epoch).zfill(4)+".png"))
+    
 
 def save_log(data, logdir, name):
     os.makedirs(logdir, exist_ok=True)
@@ -242,12 +290,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-d", "--dataset", type=str)
     parser.add_argument("--model", type=str, default=None)
-    parser.add_argument("--nirhead_model", type=str, default=None)
+    parser.add_argument("--synth_model", type=str, default=None)
     parser.add_argument("-b", "--batch_size", type=int, default=4)
     parser.add_argument("-e", "--epochs", type=int, default=100)
+    parser.add_argument("--img_res", type=int, default=256)
+    parser.add_argument("--subject_hash", type=str, default="binary", choices=["binary", "sha256"])
     #parser.add_argument("--flip_aug", action="store_true", default=False)
     parser.add_argument("--loss", type=str, default="mixed")
-    parser.add_argument("--savedir", type=str)
+    parser.add_argument("--savedir", type=str, default="/mnt/g/FacesNIR/models/identifier")
     parser.add_argument("--dst", type=str, default=None)
     
     # parser.add_argument("--no_train", type=str)

@@ -100,6 +100,7 @@ class GaussianDiscriminator(nn.Module):
         self.channels_dict = channels_dict
         fp16_resolution = max(2 ** (self.img_resolution_log2 + 1 - config.num_fp16_res), 8)
 
+        cmap_dim = config.cmap_dim
         if config.cmap_dim is None:
             cmap_dim = channels_dict[4]
         if config.c_dim == 0:
