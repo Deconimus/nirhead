@@ -15,6 +15,7 @@ class IdentificationDataSet(ClassificationDataSet):
     def __init__(self, root, resolution=None, mode=None, labelclasses=None, subdir="", flip=False, inference=False, strict_pose=False):
         super(IdentificationDataSet, self).__init__(root, resolution, mode, labelclasses, subdir, flip, inference)
         self.subject_labels = None
+        self.subject_labels_index = None
         self.poses = None
         
         poses_skipped = 0
@@ -52,6 +53,8 @@ class IdentificationDataSet(ClassificationDataSet):
             with self._open_file("subject_labels.json") as f:
                 subjdata = json.load(f)
             self.subject_labels = []
+            self.subject_labels_index = {}
+            subj_label_counter = 0
             for file in self.images:
                 file = file.replace("\\", "/").replace("+", "/")
                 if not file in subjdata.keys():
@@ -59,7 +62,9 @@ class IdentificationDataSet(ClassificationDataSet):
                 assert (file in subjdata.keys())
                 subject_label = subjdata[file]["nr"]
                 self.subject_labels.append(subject_label)
-            
+                if subject_label not in self.subject_labels_index.keys():
+                    self.subject_labels_index[subject_label] = subj_label_counter
+                    subj_label_counter += 1
     
     def __getitem__(self, idx):
         

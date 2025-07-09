@@ -1,5 +1,6 @@
-import os, gc, argparse, pathlib, multiprocessing, json, math, PIL.Image, PIL.ImageOps
+import os, gc, argparse, pathlib, multiprocessing, json, math, PIL.Image, PIL.ImageOps, hashlib
 import torch, torchvision
+import numpy as np
 from tqdm import tqdm
 from torch import nn
 from timeit import default_timer as timer
@@ -40,9 +41,22 @@ def main(args):
         model, name = identifier.load_identifier_model_dir(args.resume, device)
         with open(pathlib.Path(args.resume) / "args.json", "r") as f:
             model_cfg = identifier.IdentifierConfig.from_json(json.load(f))
+        if model_cfg.subject_hash is None and model_cfg.conditioning_map_dim == 0:
+            args.full_classification = True
+        if model_cfg.no_discriminator:
+            args.pure_image_training = True
         print(f"Resuming {str(pathlib.Path(args.resume))}")
     else:
+        if args.subject_hash.lower().strip() == "none":
+            args.subject_hash = None
         model_cfg = identifier.IdentifierConfig.from_dict(dict(vars(args)))
+        if args.full_classification:
+            args.subject_hash = None
+            model_cfg.subject_hash = None
+            model_cfg.conditioning_map_dim = 0
+            model_cfg.discriminator_out_dim = len(trainset.subject_labels_index.keys())+1 # one class for each subject plus added "fake image" class
+        if args.pure_image_training:
+            model_cfg.no_discriminator = True
         model, name = identifier.load_identifier_model(model_cfg, device)
     
     model_manager = find_model_manager(args.synth_model)
@@ -58,12 +72,21 @@ def main(args):
     grids_dir = dst_dir / "grids"
     
     optimizerG = torch.optim.Adam(params=model.G.parameters(), lr=0.0001)
-    optimizerD = torch.optim.Adam(params=model.D.parameters(), lr=0.0001)
-    criterion = torch.nn.BCEWithLogitsLoss()
+    optimizerD = None
+    if not args.pure_image_training:
+        optimizerD = torch.optim.Adam(params=model.D.parameters(), lr=0.0001)
+    
+    if args.full_classification:
+        criterion = torch.nn.CrossEntropyLoss()
+    else:
+        criterion = torch.nn.BCEWithLogitsLoss()
     
     train_time_start = timer()
     
-    data = {"train_loss_D": [], "train_loss_G": [], "train_acc": [], "train_D_x": [], "train_D_G_z1": [], "train_D_G_z2": [], "test_loss_D": [], "test_loss_G": [], "test_acc": [], "trainsets": []}
+    if args.pure_image_training:
+        data = {"train_loss_G": [], "train_image_mse": [], "train_c_mse": [], "test_loss_G": [], "test_image_mse": [], "test_c_mse": [], "trainsets": []}
+    else:
+        data = {"train_loss_D": [], "train_loss_G": [], "train_acc": [], "train_D_x": [], "train_D_G_z1": [], "train_D_G_z2": [], "test_loss_D": [], "test_loss_G": [], "test_acc": [], "trainsets": []}
     if args.resume:
         history_file = pathlib.Path(args.resume) / "history.json"
         if not os.path.isfile(history_file) or not os.path.exists(history_file):
@@ -79,24 +102,36 @@ def main(args):
         for epoch in range(args.epochs):
             #with tqdm(total=(len(trainset) // args.batch_size) + int(math.ceil(len(testset) / args.batch_size)), leave=False) as pbar:
             with tqdm(total=len(trainset) // args.batch_size, leave=False) as pbar:
-                train_loss_D, train_loss_G, train_acc, train_D_x, train_D_G_z1, train_D_G_z2 = train_step(dl_train, model, nirhead_model, optimizerG, optimizerD, criterion, device, args, pbar)
-                #test_loss_D, test_loss_G, test_acc = test_step(dl_test, model, nirhead_model, device, pbar)
-                test_grid(epoch+1, dl_test, model, nirhead_model, grids_dir, device, args)
+                if args.pure_image_training:
+                    train_loss_G, train_image_mse, train_c_mse = train_step_pure_image_loss(dl_train, model, nirhead_model, optimizerG, device, args, pbar)
+                else:
+                    train_loss_D, train_loss_G, train_acc, train_D_x, train_D_G_z1, train_D_G_z2 = train_step(dl_train, trainset.subject_labels_index, model, nirhead_model, optimizerG, optimizerD, criterion, device, args, pbar)
+                    #test_loss_D, test_loss_G, test_acc = test_step(dl_test, model, nirhead_model, device, pbar)
             
-            print(
-                f"Epoch {epoch:04} | Train: (loss_D={train_loss_D:.6f}, loss_G={train_loss_G:.6f}, acc={train_acc:.6f}, D_x={train_D_x:.6f}, D_G_z1={train_D_G_z1:.6f}, D_G_z2={train_D_G_z2:.6f})" +
-                #f" | Test (loss_D={test_loss_D:.6f}, loss_G={test_loss_G:.6f}, acc={test_acc:.6f}))" +
-                f" | CUDA alloc: {torch.cuda.memory_allocated(0) / (2 ** 30):.3f}GB, rsrvd: {torch.cuda.memory_reserved(0) / (2 ** 30):.3}GB")
+            if args.pure_image_training:
+                print(
+                    f"Epoch {epoch:04} | Train: (loss_G={train_loss_G:.6f}, image_mse={train_image_mse:.6f}, c_mse={train_c_mse:.6f}" +
+                    # f" | Test (loss_D={test_loss_D:.6f}, loss_G={test_loss_G:.6f}, acc={test_acc:.6f}))" +
+                    f" | CUDA alloc: {torch.cuda.memory_allocated(0) / (2 ** 30):.3f}GB, rsrvd: {torch.cuda.memory_reserved(0) / (2 ** 30):.3}GB")
+            else:
+                print(
+                    f"Epoch {epoch:04} | Train: (loss_D={train_loss_D:.6f}, loss_G={train_loss_G:.6f}, acc={train_acc:.6f}, D_x={train_D_x:.6f}, D_G_z1={train_D_G_z1:.6f}, D_G_z2={train_D_G_z2:.6f})" +
+                    #f" | Test (loss_D={test_loss_D:.6f}, loss_G={test_loss_G:.6f}, acc={test_acc:.6f}))" +
+                    f" | CUDA alloc: {torch.cuda.memory_allocated(0) / (2 ** 30):.3f}GB, rsrvd: {torch.cuda.memory_reserved(0) / (2 ** 30):.3}GB")
             
-            data["train_loss_D"].append(float(train_loss_D))
-            data["train_loss_G"].append(float(train_loss_G))
-            data["train_acc"].append(float(train_acc))
-            data["train_D_x"].append(float(train_D_x))
-            data["train_D_G_z1"].append(float(train_D_G_z1))
-            data["train_D_G_z2"].append(float(train_D_G_z2))
-            #data["test_loss_D"].append(float(test_loss_D))
-            #data["test_loss_G"].append(float(test_loss_G))
-            #data["test_acc"].append(float(test_acc))
+            if args.pure_image_training:
+                data["train_loss_G"].append(float(train_loss_G))
+                data["train_image_mse"].append(float(train_image_mse))
+                data["train_c_mse"].append(float(train_c_mse))
+            else:
+                data["train_loss_D"].append(float(train_loss_D))
+                data["train_loss_G"].append(float(train_loss_G))
+                data["train_acc"].append(float(train_acc))
+                data["train_D_x"].append(float(train_D_x))
+                data["train_D_G_z1"].append(float(train_D_G_z1))
+                data["train_D_G_z2"].append(float(train_D_G_z2))
+            
+            test_grid(epoch + 1, dl_test, model, nirhead_model, grids_dir, device, args)
             
             if args.stop_at_train_loss and train_loss <= args.stop_at_train_loss:
                 print(f"Train loss goal reached, stopping training at train_loss={train_loss}")
@@ -112,7 +147,6 @@ def main(args):
     
     train_time_end = timer()
     print(f"Train time on {device}: {(train_time_end - train_time_start):.2f}s")
-    print(f"Best test accuracy: {max(data['test_acc'])} (epoch {data['test_acc'].index(max(data['test_acc']))})")
     
     trainset_relpath = str(pathlib.Path(args.dataset).absolute()).replace("\\", "/")
     if "EyesNIR/" in trainset_relpath:
@@ -141,9 +175,10 @@ def main(args):
         print("Saved model arguments: " + str(args_file))
 
 
-def train_step(data_loader, model, nirhead_model, optimizerG, optimizerD, criterion, device, args, pbar):
+def train_step(data_loader, subject_labels_index, model, nirhead_model, optimizerG, optimizerD, criterion, device, args, pbar):
     train_loss_D, train_loss_G, train_acc, train_D_x, train_D_G_z1, train_D_G_z2 = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
     for batch, (real_imgs, subj_labels, real_c) in enumerate(data_loader):
+        real_imgs_hash = identifier.images_hash(real_imgs, device) if model.cfg.generator_random_concat else None
         real_imgs = real_imgs.to(device)
         real_c = real_c.to(device)
         
@@ -154,7 +189,12 @@ def train_step(data_loader, model, nirhead_model, optimizerG, optimizerD, criter
         # -- D train step --
         # real image batch:
         
-        label = torch.full((real_imgs.size(0),), REAL_LABEL, dtype=torch.float32, device=device)
+        if args.full_classification:
+            label = torch.full((real_imgs.size(0), model.cfg.discriminator_out_dim), FAKE_LABEL, dtype=torch.float32, device=device)
+            for i in range(label.shape[0]):
+                label[i, subject_labels_index[int(subj_labels[i].item())]] = REAL_LABEL
+        else:
+            label = torch.full((real_imgs.size(0),), REAL_LABEL, dtype=torch.float32, device=device)
         
         logits = model.discriminate(real_imgs, subj_labels)
         loss_Dreal = criterion(logits, label)
@@ -163,7 +203,7 @@ def train_step(data_loader, model, nirhead_model, optimizerG, optimizerD, criter
         
         # fake image batch:
         
-        z, fake_c = model(real_imgs)
+        z, fake_c = model(real_imgs, real_imgs_hash)
         
         with torch.no_grad():
             w = nirhead_model.mapping(z, real_c, None, truncation_psi=0.7)
@@ -172,8 +212,11 @@ def train_step(data_loader, model, nirhead_model, optimizerG, optimizerD, criter
                                              return_uv_map=False)
             fake_imgs = nirhead_output["image"]
             fake_imgs = torchvision.transforms.functional.rgb_to_grayscale(fake_imgs, num_output_channels=1)
-        
+            
         label.fill_(FAKE_LABEL)
+        if args.full_classification:
+            for i in range(label.shape[0]):
+                label[i, label.shape[1]-1] = REAL_LABEL # last subject-class is the added "fake image" class
         
         logits = model.discriminate(fake_imgs.detach(), subj_labels)
         loss_Dfake = criterion(logits, label)
@@ -187,7 +230,13 @@ def train_step(data_loader, model, nirhead_model, optimizerG, optimizerD, criter
         # -- G train step --
         
         optimizerG.zero_grad()
-        label.fill_(REAL_LABEL)
+        
+        if args.full_classification:
+            label.fill_(FAKE_LABEL)
+            for i in range(label.shape[0]):
+                label[i, subject_labels_index[int(subj_labels[i].item())]] = REAL_LABEL  # last subject-class is the added "fake image" class
+        else:
+            label.fill_(REAL_LABEL)
         
         logits = model.discriminate(fake_imgs, subj_labels)
         loss_G = criterion(logits, label)
@@ -215,26 +264,43 @@ def train_step(data_loader, model, nirhead_model, optimizerG, optimizerD, criter
     return train_loss_D, train_loss_G, train_acc, train_D_x, train_D_G_z1, train_D_G_z2
 
 
-def test_step(data_loader, model, nirhead_model, device, pbar):
-    test_loss_D, test_loss_G, test_acc = 0.0, 0.0, 0.0
-    model.eval()  # evaluation mode
-    
-    with torch.inference_mode():
-        for batch, (x, y) in enumerate(data_loader):
-            x, y = x.to(device), y.to(device)
-            
-            #y_pred = model(x)
-            
-            #test_loss += stat.attributes_loss(y_pred, y, loss_type=loss_type)
-            #test_acc += calc_accuracy(y_pred=y_pred, y_true=y, static_attributes=static_attributes)
-            
-            pbar.update(1)
+def train_step_pure_image_loss(data_loader, model, nirhead_model, optimizerG, device, args, pbar):
+    train_loss_G, train_image_mse, train_c_mse = 0.0, 0.0, 0.0
+    for batch, (real_imgs, subj_labels, real_c) in enumerate(data_loader):
+        real_imgs_hash = identifier.images_hash(real_imgs, device) if model.cfg.generator_random_concat else None
+        real_imgs = real_imgs.to(device)
+        real_c = real_c.to(device)
         
-        test_loss_D /= len(data_loader)
-        test_loss_G /= len(data_loader)
-        test_acc /= len(data_loader)
-        return test_loss_D, test_loss_G, test_acc
+        optimizerG.zero_grad()
+        
+        z, fake_c = model(real_imgs, real_imgs_hash)
+        
+        with torch.no_grad():
+            w = nirhead_model.mapping(z, real_c, None, truncation_psi=0.7)
+            nirhead_output = nirhead_model.synthesis(w, real_c, noise_mode='const', return_masks=False,
+                                                     neural_rendering_resolution=args.img_res,
+                                                     return_uv_map=False)
+            fake_imgs = nirhead_output["image"]
+            fake_imgs = torchvision.transforms.functional.rgb_to_grayscale(fake_imgs, num_output_channels=1)
+            
+        image_mse = torch.nn.functional.mse_loss(fake_imgs, real_imgs)
+        c_mse = torch.nn.functional.mse_loss(fake_c, real_c)
+        
+        loss_G = image_mse + c_mse
+        loss_G.backward()
+        optimizerG.step()
+        
+        train_loss_G += loss_G.item()
+        train_image_mse += image_mse.item()
+        train_c_mse += c_mse.item()
+        
+        pbar.update(1)
     
+    train_loss_G /= len(data_loader)
+    train_image_mse /= len(data_loader)
+    train_c_mse /= len(data_loader)
+    return train_loss_G, train_image_mse, train_c_mse
+
 
 def test_grid(epoch, data_loader, model, nirhead_model, grids_dir, device, args):
     grid_real_imgs = []
@@ -286,6 +352,27 @@ def save_log(data, logdir, name):
     print("Saved log: "+str(dst_file))
 
 
+#def test_step(data_loader, model, nirhead_model, device, pbar):
+#    test_loss_D, test_loss_G, test_acc = 0.0, 0.0, 0.0
+#    model.eval()  # evaluation mode
+#
+#    with torch.inference_mode():
+#        for batch, (x, y) in enumerate(data_loader):
+#            x, y = x.to(device), y.to(device)
+#
+#            # y_pred = model(x)
+#
+#            # test_loss += stat.attributes_loss(y_pred, y, loss_type=loss_type)
+#            # test_acc += calc_accuracy(y_pred=y_pred, y_true=y, static_attributes=static_attributes)
+#
+#            pbar.update(1)
+#
+#        test_loss_D /= len(data_loader)
+#        test_loss_G /= len(data_loader)
+#        test_acc /= len(data_loader)
+#        return test_loss_D, test_loss_G, test_acc
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-d", "--dataset", type=str)
@@ -294,7 +381,13 @@ if __name__ == "__main__":
     parser.add_argument("-b", "--batch_size", type=int, default=4)
     parser.add_argument("-e", "--epochs", type=int, default=100)
     parser.add_argument("--img_res", type=int, default=256)
-    parser.add_argument("--subject_hash", type=str, default="binary", choices=["binary", "sha256"])
+    parser.add_argument("--subject_hash", type=str, default="binary", choices=["binary", "sha256", "none"])
+    parser.add_argument("--full_classification", action="store_true", default=False)
+    parser.add_argument("--discriminator_fc_dim", type=int, default=512)
+    parser.add_argument("--generator_z_tanh", action="store_true", default=True, dest="generator_z_tanh")
+    parser.add_argument("--no_generator_z_tanh", action="store_false", dest="generator_z_tanh")
+    parser.add_argument("--generator_random_concat", action="store_true", default=False)
+    parser.add_argument("--pure_image_training", action="store_true", default=False)
     #parser.add_argument("--flip_aug", action="store_true", default=False)
     parser.add_argument("--loss", type=str, default="mixed")
     parser.add_argument("--savedir", type=str, default="/mnt/g/FacesNIR/models/identifier")
@@ -303,7 +396,7 @@ if __name__ == "__main__":
     # parser.add_argument("--no_train", type=str)
     parser.add_argument("--resume", type=str)
     parser.add_argument("--stop_at_train_loss", type=float)
-    parser.add_argument("--stop_at_test_loss", type=float)
+    #parser.add_argument("--stop_at_test_loss", type=float)
     
     #parser.add_argument("--patch_size", type=int, default=16)
     #parser.add_argument("--vit_mlp_dim", type=int, default=1024)
