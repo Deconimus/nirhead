@@ -86,7 +86,7 @@ def main(args):
     if args.pure_image_training:
         data = {"train_loss_G": [], "train_image_mse": [], "train_c_mse": [], "test_loss_G": [], "test_image_mse": [], "test_c_mse": [], "trainsets": []}
     else:
-        data = {"train_loss_D": [], "train_loss_G": [], "train_acc": [], "train_D_x": [], "train_D_G_z1": [], "train_D_G_z2": [], "test_loss_D": [], "test_loss_G": [], "test_acc": [], "trainsets": []}
+        data = {"train_loss_D": [], "train_loss_G": [], "train_image_mse": [], "train_c_mse": [], "train_acc": [], "train_D_x": [], "train_D_G_z1": [], "train_D_G_z2": [], "test_loss_D": [], "test_loss_G": [], "test_acc": [], "trainsets": []}
     if args.resume:
         history_file = pathlib.Path(args.resume) / "history.json"
         if not os.path.isfile(history_file) or not os.path.exists(history_file):
@@ -105,7 +105,7 @@ def main(args):
                 if args.pure_image_training:
                     train_loss_G, train_image_mse, train_c_mse = train_step_pure_image_loss(dl_train, model, nirhead_model, optimizerG, device, args, pbar)
                 else:
-                    train_loss_D, train_loss_G, train_acc, train_D_x, train_D_G_z1, train_D_G_z2 = train_step(dl_train, trainset.subject_labels_index, model, nirhead_model, optimizerG, optimizerD, criterion, device, args, pbar)
+                    train_loss_D, train_loss_G, train_image_mse, train_c_mse, train_acc, train_D_x, train_D_G_z1, train_D_G_z2 = train_step(dl_train, trainset.subject_labels_index, model, nirhead_model, optimizerG, optimizerD, criterion, device, args, pbar)
                     #test_loss_D, test_loss_G, test_acc = test_step(dl_test, model, nirhead_model, device, pbar)
             
             if args.pure_image_training:
@@ -126,6 +126,8 @@ def main(args):
             else:
                 data["train_loss_D"].append(float(train_loss_D))
                 data["train_loss_G"].append(float(train_loss_G))
+                data["train_image_mse"].append(float(train_image_mse))
+                data["train_c_mse"].append(float(train_c_mse))
                 data["train_acc"].append(float(train_acc))
                 data["train_D_x"].append(float(train_D_x))
                 data["train_D_G_z1"].append(float(train_D_G_z1))
@@ -176,7 +178,7 @@ def main(args):
 
 
 def train_step(data_loader, subject_labels_index, model, nirhead_model, optimizerG, optimizerD, criterion, device, args, pbar):
-    train_loss_D, train_loss_G, train_acc, train_D_x, train_D_G_z1, train_D_G_z2 = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+    train_loss_D, train_loss_G, train_image_mse, train_c_mse, train_acc, train_D_x, train_D_G_z1, train_D_G_z2 = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
     for batch, (real_imgs, subj_labels, real_c) in enumerate(data_loader):
         real_imgs_hash = identifier.images_hash(real_imgs, device) if model.cfg.generator_random_concat else None
         real_imgs = real_imgs.to(device)
@@ -239,8 +241,13 @@ def train_step(data_loader, subject_labels_index, model, nirhead_model, optimize
             label.fill_(REAL_LABEL)
         
         logits = model.discriminate(fake_imgs, subj_labels)
+        
         loss_G = criterion(logits, label)
-        loss_G += torch.nn.functional.mse_loss(fake_c, real_c)
+        c_mse = torch.nn.functional.mse_loss(fake_c, real_c)
+        loss_G += c_mse
+        if model.cfg.add_image_mse:
+            image_mse = torch.nn.functional.mse_loss(fake_imgs, real_imgs)
+            loss_G += image_mse
         loss_G.backward()
         
         D_G_z2 = logits.mean().item()
@@ -249,6 +256,9 @@ def train_step(data_loader, subject_labels_index, model, nirhead_model, optimize
         
         train_loss_D += loss_D.item()
         train_loss_G += loss_G.item()
+        if model.cfg.add_image_mse:
+            train_image_mse += image_mse.item()
+        train_c_mse += c_mse.item()
         train_D_x += D_x
         train_D_G_z1 += D_G_z1
         train_D_G_z2 += D_G_z2
@@ -257,6 +267,8 @@ def train_step(data_loader, subject_labels_index, model, nirhead_model, optimize
     
     train_loss_D /= len(data_loader)
     train_loss_G /= len(data_loader)
+    train_image_mse /= len(data_loader)
+    train_c_mse /= len(data_loader)
     train_acc /= len(data_loader)
     train_D_x /= len(data_loader)
     train_D_G_z1 /= len(data_loader)
@@ -388,6 +400,7 @@ if __name__ == "__main__":
     parser.add_argument("--no_generator_z_tanh", action="store_false", dest="generator_z_tanh")
     parser.add_argument("--generator_random_concat", action="store_true", default=False)
     parser.add_argument("--pure_image_training", action="store_true", default=False)
+    parser.add_argument("--add_image_mse", action="store_true", default=False)
     #parser.add_argument("--flip_aug", action="store_true", default=False)
     parser.add_argument("--loss", type=str, default="mixed")
     parser.add_argument("--savedir", type=str, default="/mnt/g/FacesNIR/models/identifier")

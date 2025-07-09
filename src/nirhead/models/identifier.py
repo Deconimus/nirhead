@@ -34,6 +34,7 @@ class IdentifierConfig(Config):
     generator_z_tanh: bool = True
     generator_random_concat: bool = False
     no_discriminator: bool = False
+    add_image_mse: bool = False
     trainsets: Optional[List[Tuple[str, int]]] = field(default_factory=list)
 
 
@@ -251,6 +252,8 @@ def load_identifier_model(cfg: IdentifierConfig, device: str, weights_file=None)
         suffix += "_noise"
     if not cfg.generator_z_tanh:
         suffix += "_notanh"
+    if cfg.add_image_mse:
+        suffix += "_addimagemse"
     
     name = "identifier_" + pathlib.Path(cfg.synth_model).name + "_" + str(int(time.time())) + "_" + suffix
     
