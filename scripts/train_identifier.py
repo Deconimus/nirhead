@@ -273,7 +273,7 @@ def train_step(data_loader, subject_labels_index, model, nirhead_model, optimize
     train_D_x /= len(data_loader)
     train_D_G_z1 /= len(data_loader)
     train_D_G_z2 /= len(data_loader)
-    return train_loss_D, train_loss_G, train_acc, train_D_x, train_D_G_z1, train_D_G_z2
+    return train_loss_D, train_loss_G, train_image_mse, train_c_mse, train_acc, train_D_x, train_D_G_z1, train_D_G_z2
 
 
 def train_step_pure_image_loss(data_loader, model, nirhead_model, optimizerG, device, args, pbar):
