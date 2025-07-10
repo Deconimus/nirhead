@@ -1,4 +1,4 @@
-import os.path, pathlib, time, inspect, json, hashlib
+import os.path, pathlib, time, inspect, json, hashlib, math
 from typing import Optional, List, Dict, Tuple
 import numpy as np
 import torch, torchvision
@@ -33,8 +33,9 @@ class IdentifierConfig(Config):
     discriminator_out_dim: int = 1
     generator_z_tanh: bool = True
     generator_random_concat: bool = False
-    no_discriminator: bool = False
-    add_image_mse: bool = False
+    mode: str = "gan"
+    add_image_loss: bool = False
+    use_perceptive_loss: bool = False
     trainsets: Optional[List[Tuple[str, int]]] = field(default_factory=list)
 
 
@@ -88,12 +89,12 @@ class IdentifierGenerator(GaussianDiscriminator):
         
         z = x[:, :self.cfg.latent_z_dim]
         if self.cfg.generator_z_tanh:
-            z = torch.nn.functional.tanh(z)
+            z = torch.nn.functional.tanh(z) * 2.0
         if self.cfg.generator_random_concat:
             z_concat_noise = torch.concat([z, img_hash], dim=1)
             z = self.z_out(z_concat_noise)
             if self.cfg.generator_z_tanh:
-                z = torch.nn.functional.tanh(z)
+                z = torch.nn.functional.tanh(z) * 2.0
                 
         c = x[:, self.cfg.latent_z_dim:]
         
@@ -184,7 +185,7 @@ class Identifier(nn.Module):
         g_cfg.pretrained_resolution = None
         self.G = IdentifierGenerator(cfg, g_cfg, device).to(device)
         
-        if not cfg.no_discriminator:
+        if cfg.mode == "gan":
             # our discriminator, which checks if generated or real images are believable images for the target subject_label (during training)
             # we use the conditioning vector c to condition the model for our subject labels (hashes of strings)
             d_cfg = GaussianDiscriminatorConfig(
@@ -214,7 +215,7 @@ class Identifier(nn.Module):
         return self.G(img, img_hash)
     
     def discriminate(self, img: torch.Tensor, subject_labels: List[int]):
-        if self.cfg.no_discriminator:
+        if self.cfg.mode != "gan":
             return None
         
         subject_hash = None
@@ -247,15 +248,15 @@ def load_identifier_model(cfg: IdentifierConfig, device: str, weights_file=None)
         with open(weights_file, "rb") as f:
             model.load_state_dict(torch.load(f, weights_only=True, map_location=device))
     
-    suffix = (cfg.subject_hash if cfg.subject_hash is not None else "classes") if not cfg.no_discriminator else "imageloss"
+    suffix = (cfg.subject_hash if cfg.subject_hash is not None else "classes") if cfg.mode == "gan" else cfg.mode+"loss"
     if cfg.generator_random_concat:
         suffix += "_noise"
     if not cfg.generator_z_tanh:
         suffix += "_notanh"
-    if cfg.add_image_mse:
+    if cfg.add_image_loss:
         suffix += "_addimagemse"
     
-    name = "identifier_" + pathlib.Path(cfg.synth_model).name + "_" + str(int(time.time())) + "_" + suffix
+    name = "identifier_" + (pathlib.Path(cfg.synth_model).name+"_" if cfg.synth_model is not None else "") + str(int(time.time())) + "_" + suffix
     
     return model, name
 
@@ -295,3 +296,34 @@ def images_hash(imgs, device=None):
     if device is not None:
         imgs_hash = imgs_hash.to(device)
     return imgs_hash
+
+
+def perceptive_loss(input: torch.Tensor, target: torch.Tensor, min_size=16, weights=None):
+    assert(input.device == target.device)
+    assert(input.shape == target.shape)
+    
+    max_log = int(math.floor(math.log2(x)))
+    min_log = int(math.floor(math.log2(min_size)))
+    resolutions = [2**l for l in range(min_log, max_log+1)]
+    if 2**start_log != input.shape[1]:
+        resolutions = [input.shape[1]] + resolutions
+    
+    if weights is None:
+        weights = torch.full((len(resolutions),), 1.0, dtype=torch.float32, device=input.device)
+    elif isinstance(weights, list):
+        weights = torch.tensor(list[:len(resolutions)], dtype=torch.float32, device=input.device)
+    else:
+        weights = weights[:len(resolutions)]
+    weights /= torch.linalg.vector_norm(weights)
+    
+    loss = 0.0
+    
+    for idx, res in enumerate(resolutions):
+        x, y = input, target
+        if res != input.shape[1]:
+            x = torchvision.transforms.functional.resize(input, [res, res]) # bilinear and anti-alias is active per default
+            y = torchvision.transforms.functional.resize(target, [res, res])
+        
+        loss += torch.nn.functional.mse_loss(x, y) * weights[idx]
+        
+    return loss

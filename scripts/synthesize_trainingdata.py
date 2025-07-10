@@ -84,8 +84,8 @@ def main(args):
         c_batches = torch.from_numpy(np.stack([c_front] * num_samples, 0)).to("cpu")
     
     # attributes data
-    attr_batches = stat.random_attribute_tensor(static_attributes, num_samples, device="cpu", rng=rng) if static_attributes else []
-    attr_indices = stat.attribute_indices(static_attributes)
+    attr_batches = stat.random_attribute_tensor(static_attributes, num_samples, device="cpu", rng=rng) if static_attributes else torch.tensor([], dtype=torch.float32)
+    attr_indices = stat.attribute_indices(static_attributes) if static_attributes else {}
     
     # -- Even-out Attribute Distribution ---------------------------------------
     
@@ -198,7 +198,7 @@ def main(args):
     
     z_batches    = z_batches.split(args.batch)
     c_batches    = c_batches.split(args.batch)
-    attr_batches = attr_batches.split(args.batch)
+    attr_batches = attr_batches.split(args.batch) if static_attributes else None
     
     
     # -- Synthesize Images -----------------------------------------------------
@@ -213,12 +213,15 @@ def main(args):
         with ThreadPoolExecutor(max_workers=8) as xec:
             for i in tqdm(range(len(z_batches))):
                 batch_size = z_batches[i].shape[0]
+                z_batch = z_batches[i].to(device)
+                c_batch = c_batches[i].to(device)
+                attr_batch = attr_batches[i].to(device) if static_attributes else None
                 
-                images, image_tensors = render_batch(model, z_batches[i].to(device), c_batches[i].to(device), attr_batches[i].to(device), batch_size)
+                images, image_tensors = render_batch(model, z_batch, c_batch, attr_batch, batch_size)
                 image_names = ["synthetic_"+str(i*args.batch+j).zfill(6)+".png" for j in range(len(images))]
                 
-                if classifier is not None and static_attributes is not None:
-                    batch_labels = label_images(image_tensors, image_names, static_attributes, classifier)
+                if (classifier is not None and static_attributes is not None) or args.store_latent:
+                    batch_labels = label_images(image_tensors, image_names, static_attributes, classifier, z_batches[i], c_batches[i], args)
                     for k in batch_labels.keys():
                         labels["train/"+k] = batch_labels[k]
                 
@@ -267,11 +270,17 @@ def render_batch(model, z, c, attr, batch_size):
     return images, image_tensors
 
 
-def label_images(images, image_names, static_attributes, classifier):
-    x = torchvision.transforms.functional.rgb_to_grayscale(images.to(device))
-    y_pred = classifier(x).to("cpu")
-    y_pred_filtered = stat.take_from_attribute_tensor(y_pred, classifier.static_attributes, static_attributes)
-    labels = stat.labels_from_attribute_tensor(y_pred_filtered, image_names, static_attributes)
+def label_images(images, image_names, static_attributes, classifier, z, c, args):
+    labels = { k: {} for k in image_names }
+    if classifier is not None and static_attributes is not None:
+        x = torchvision.transforms.functional.rgb_to_grayscale(images.to(device))
+        y_pred = classifier(x).to("cpu")
+        y_pred_filtered = stat.take_from_attribute_tensor(y_pred, classifier.static_attributes, static_attributes)
+        labels = stat.labels_from_attribute_tensor(y_pred_filtered, image_names, static_attributes)
+    if args.store_latent:
+        for i in range(images.shape[0]):
+            labels[image_names[i]]["z"] = z[i].tolist()
+            labels[image_names[i]]["c"] = c[i].tolist()
     return labels
 
 
@@ -328,6 +337,7 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=136)
     parser.add_argument("--labels", type=str, nargs="+", default=None)  # gradient over given attributes
     parser.add_argument("--classifier", type=str, default=None) # to specify labelling classifier for output images
+    parser.add_argument("--store_latent", action="store_true", default=False)
     
     parser.add_argument("--augment_distribution", action="store_true", default=False)
     

@@ -29,7 +29,7 @@ def main(args):
     
     assert (os.path.exists(args.dataset))
     
-    trainset = IdentificationDataSet(args.dataset, subdir="train", resolution=args.img_res, mode="gray", flip=False, strict_pose=True)#, labelclasses=label_classes)
+    trainset = IdentificationDataSet(args.dataset, subdir="train", resolution=args.img_res, mode="gray", flip=False, strict_pose=True, latents=args.mode=="latent")#, labelclasses=label_classes)
     testset = IdentificationDataSet(args.dataset, subdir="test", resolution=args.img_res, mode="gray", inference=True, flip=False)#, labelclasses=label_classes)
     dl_train = DataLoader(trainset, batch_size=args.batch_size, shuffle=True, num_workers=dl_workers, drop_last=True)
     dl_test = DataLoader(testset, batch_size=args.batch_size, shuffle=False, num_workers=dl_workers, drop_last=False)
@@ -43,8 +43,6 @@ def main(args):
             model_cfg = identifier.IdentifierConfig.from_json(json.load(f))
         if model_cfg.subject_hash is None and model_cfg.conditioning_map_dim == 0:
             args.full_classification = True
-        if model_cfg.no_discriminator:
-            args.pure_image_training = True
         print(f"Resuming {str(pathlib.Path(args.resume))}")
     else:
         if args.subject_hash.lower().strip() == "none":
@@ -55,8 +53,6 @@ def main(args):
             model_cfg.subject_hash = None
             model_cfg.conditioning_map_dim = 0
             model_cfg.discriminator_out_dim = len(trainset.subject_labels_index.keys())+1 # one class for each subject plus added "fake image" class
-        if args.pure_image_training:
-            model_cfg.no_discriminator = True
         model, name = identifier.load_identifier_model(model_cfg, device)
     
     model_manager = find_model_manager(args.synth_model)
@@ -64,6 +60,7 @@ def main(args):
     print(f"Loading {args.synth_model} at checkpoint {checkpoint}")
     nirhead_model = model_manager.load_checkpoint(checkpoint, load_ema=True).to(device)
     nirhead_model.requires_grad_(False)
+    nirhead_model.backbone.requires_grad_(False)
     
     if args.dst is not None:
         dst_dir = pathlib.Path(args.dst)
@@ -73,7 +70,7 @@ def main(args):
     
     optimizerG = torch.optim.Adam(params=model.G.parameters(), lr=0.0001)
     optimizerD = None
-    if not args.pure_image_training:
+    if args.mode == "gan":
         optimizerD = torch.optim.Adam(params=model.D.parameters(), lr=0.0001)
     
     if args.full_classification:
@@ -83,8 +80,10 @@ def main(args):
     
     train_time_start = timer()
     
-    if args.pure_image_training:
+    if args.mode == "image":
         data = {"train_loss_G": [], "train_image_mse": [], "train_c_mse": [], "test_loss_G": [], "test_image_mse": [], "test_c_mse": [], "trainsets": []}
+    elif args.mode == "latent":
+        data = {"train_loss_G": [], "train_z_mse": [], "train_c_mse": [], "test_loss_G": [], "test_z_mse": [], "test_c_mse": [], "trainsets": []}
     else:
         data = {"train_loss_D": [], "train_loss_G": [], "train_image_mse": [], "train_c_mse": [], "train_acc": [], "train_D_x": [], "train_D_G_z1": [], "train_D_G_z2": [], "test_loss_D": [], "test_loss_G": [], "test_acc": [], "trainsets": []}
     if args.resume:
@@ -102,16 +101,21 @@ def main(args):
         for epoch in range(args.epochs):
             #with tqdm(total=(len(trainset) // args.batch_size) + int(math.ceil(len(testset) / args.batch_size)), leave=False) as pbar:
             with tqdm(total=len(trainset) // args.batch_size, leave=False) as pbar:
-                if args.pure_image_training:
+                if args.mode == "image":
                     train_loss_G, train_image_mse, train_c_mse = train_step_pure_image_loss(dl_train, model, nirhead_model, optimizerG, device, args, pbar)
+                elif args.mode == "latent":
+                    train_loss_G, train_z_mse, train_c_mse = train_step_latents(dl_train, model, optimizerG, device, args, pbar)
                 else:
                     train_loss_D, train_loss_G, train_image_mse, train_c_mse, train_acc, train_D_x, train_D_G_z1, train_D_G_z2 = train_step(dl_train, trainset.subject_labels_index, model, nirhead_model, optimizerG, optimizerD, criterion, device, args, pbar)
                     #test_loss_D, test_loss_G, test_acc = test_step(dl_test, model, nirhead_model, device, pbar)
             
-            if args.pure_image_training:
+            if args.mode == "image":
                 print(
                     f"Epoch {epoch:04} | Train: (loss_G={train_loss_G:.6f}, image_mse={train_image_mse:.6f}, c_mse={train_c_mse:.6f}" +
-                    # f" | Test (loss_D={test_loss_D:.6f}, loss_G={test_loss_G:.6f}, acc={test_acc:.6f}))" +
+                    f" | CUDA alloc: {torch.cuda.memory_allocated(0) / (2 ** 30):.3f}GB, rsrvd: {torch.cuda.memory_reserved(0) / (2 ** 30):.3}GB")
+            elif args.mode == "latent":
+                print(
+                    f"Epoch {epoch:04} | Train: (loss_G={train_loss_G:.6f}, z_mse={train_z_mse:.6f}, c_mse={train_c_mse:.6f}" +
                     f" | CUDA alloc: {torch.cuda.memory_allocated(0) / (2 ** 30):.3f}GB, rsrvd: {torch.cuda.memory_reserved(0) / (2 ** 30):.3}GB")
             else:
                 print(
@@ -119,9 +123,13 @@ def main(args):
                     #f" | Test (loss_D={test_loss_D:.6f}, loss_G={test_loss_G:.6f}, acc={test_acc:.6f}))" +
                     f" | CUDA alloc: {torch.cuda.memory_allocated(0) / (2 ** 30):.3f}GB, rsrvd: {torch.cuda.memory_reserved(0) / (2 ** 30):.3}GB")
             
-            if args.pure_image_training:
+            if args.mode == "image":
                 data["train_loss_G"].append(float(train_loss_G))
                 data["train_image_mse"].append(float(train_image_mse))
+                data["train_c_mse"].append(float(train_c_mse))
+            elif args.mode == "latent":
+                data["train_loss_G"].append(float(train_loss_G))
+                data["train_z_mse"].append(float(train_z_mse))
                 data["train_c_mse"].append(float(train_c_mse))
             else:
                 data["train_loss_D"].append(float(train_loss_D))
@@ -207,13 +215,13 @@ def train_step(data_loader, subject_labels_index, model, nirhead_model, optimize
         
         z, fake_c = model(real_imgs, real_imgs_hash)
         
-        with torch.no_grad():
-            w = nirhead_model.mapping(z, real_c, None, truncation_psi=0.7)
-            nirhead_output = nirhead_model.synthesis(w, real_c, noise_mode='const', return_masks=False,
-                                             neural_rendering_resolution=args.img_res,
-                                             return_uv_map=False)
-            fake_imgs = nirhead_output["image"]
-            fake_imgs = torchvision.transforms.functional.rgb_to_grayscale(fake_imgs, num_output_channels=1)
+        #with torch.no_grad():
+        w = nirhead_model.mapping(z, real_c, None, truncation_psi=0.7)
+        nirhead_output = nirhead_model.synthesis(w, real_c, noise_mode='const', return_masks=False,
+                                         neural_rendering_resolution=args.img_res,
+                                         return_uv_map=False)
+        fake_imgs = nirhead_output["image"]
+        fake_imgs = torchvision.transforms.functional.rgb_to_grayscale(fake_imgs, num_output_channels=1)
             
         label.fill_(FAKE_LABEL)
         if args.full_classification:
@@ -243,11 +251,17 @@ def train_step(data_loader, subject_labels_index, model, nirhead_model, optimize
         logits = model.discriminate(fake_imgs, subj_labels)
         
         loss_G = criterion(logits, label)
+        image_mse = torch.nn.functional.mse_loss(fake_imgs, real_imgs)
         c_mse = torch.nn.functional.mse_loss(fake_c, real_c)
         loss_G += c_mse
-        if model.cfg.add_image_mse:
-            image_mse = torch.nn.functional.mse_loss(fake_imgs, real_imgs)
-            loss_G += image_mse
+        
+        if model.cfg.add_image_loss:
+            if model.cfg.use_perceptive_loss:
+                image_loss = identifier.perceptive_loss(fake_imgs, real_imgs, weights=[1.0, 1.0, 1.0, 1.0, 2.0])
+            else:
+                image_loss = image_mse
+            loss_G += image_loss
+        
         loss_G.backward()
         
         D_G_z2 = logits.mean().item()
@@ -256,8 +270,7 @@ def train_step(data_loader, subject_labels_index, model, nirhead_model, optimize
         
         train_loss_D += loss_D.item()
         train_loss_G += loss_G.item()
-        if model.cfg.add_image_mse:
-            train_image_mse += image_mse.item()
+        train_image_mse += image_mse.item()
         train_c_mse += c_mse.item()
         train_D_x += D_x
         train_D_G_z1 += D_G_z1
@@ -287,18 +300,23 @@ def train_step_pure_image_loss(data_loader, model, nirhead_model, optimizerG, de
         
         z, fake_c = model(real_imgs, real_imgs_hash)
         
-        with torch.no_grad():
-            w = nirhead_model.mapping(z, real_c, None, truncation_psi=0.7)
-            nirhead_output = nirhead_model.synthesis(w, real_c, noise_mode='const', return_masks=False,
-                                                     neural_rendering_resolution=args.img_res,
-                                                     return_uv_map=False)
-            fake_imgs = nirhead_output["image"]
-            fake_imgs = torchvision.transforms.functional.rgb_to_grayscale(fake_imgs, num_output_channels=1)
-            
+        #with torch.no_grad():
+        w = nirhead_model.mapping(z, real_c, None, truncation_psi=0.7)
+        nirhead_output = nirhead_model.synthesis(w, real_c, noise_mode='const', return_masks=False,
+                                                 neural_rendering_resolution=args.img_res,
+                                                 return_uv_map=False)
+        fake_imgs = nirhead_output["image"]
+        fake_imgs = torchvision.transforms.functional.rgb_to_grayscale(fake_imgs, num_output_channels=1)
+        
         image_mse = torch.nn.functional.mse_loss(fake_imgs, real_imgs)
         c_mse = torch.nn.functional.mse_loss(fake_c, real_c)
         
-        loss_G = image_mse + c_mse
+        if model.cfg.use_perceptive_loss:
+            image_loss = identifier.perceptive_loss(fake_imgs, real_imgs, weights=[1.0, 1.0, 1.0, 1.0, 2.0])
+        else:
+            image_loss = image_mse
+        
+        loss_G = image_loss + c_mse
         loss_G.backward()
         optimizerG.step()
         
@@ -312,6 +330,37 @@ def train_step_pure_image_loss(data_loader, model, nirhead_model, optimizerG, de
     train_image_mse /= len(data_loader)
     train_c_mse /= len(data_loader)
     return train_loss_G, train_image_mse, train_c_mse
+
+
+def train_step_latents(data_loader, model, optimizerG, device, args, pbar):
+    train_loss_G, train_z_mse, train_c_mse = 0.0, 0.0, 0.0
+    for batch, (real_imgs, real_c, real_z) in enumerate(data_loader):
+        real_imgs_hash = identifier.images_hash(real_imgs, device) if model.cfg.generator_random_concat else None
+        real_imgs = real_imgs.to(device)
+        real_z = real_z.to(device)
+        real_c = real_c.to(device)
+        
+        optimizerG.zero_grad()
+        
+        fake_z, fake_c = model(real_imgs, real_imgs_hash)
+        
+        z_mse = torch.nn.functional.mse_loss(fake_z, real_z)
+        c_mse = torch.nn.functional.mse_loss(fake_c, real_c)
+        
+        loss_G = z_mse + c_mse
+        loss_G.backward()
+        optimizerG.step()
+        
+        train_loss_G += loss_G.item()
+        train_z_mse += z_mse.item()
+        train_c_mse += c_mse.item()
+        
+        pbar.update(1)
+    
+    train_loss_G /= len(data_loader)
+    train_z_mse /= len(data_loader)
+    train_c_mse /= len(data_loader)
+    return train_loss_G, train_z_mse, train_c_mse
 
 
 def test_grid(epoch, data_loader, model, nirhead_model, grids_dir, device, args):
@@ -389,18 +438,19 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-d", "--dataset", type=str)
     parser.add_argument("--model", type=str, default=None)
-    parser.add_argument("--synth_model", type=str, default=None)
+    parser.add_argument("--synth_model", type=str, default=None, required=True)
     parser.add_argument("-b", "--batch_size", type=int, default=4)
     parser.add_argument("-e", "--epochs", type=int, default=100)
     parser.add_argument("--img_res", type=int, default=256)
+    parser.add_argument("--mode", type=str, default="gan", choices=["gan", "image", "latent"])
     parser.add_argument("--subject_hash", type=str, default="binary", choices=["binary", "sha256", "none"])
     parser.add_argument("--full_classification", action="store_true", default=False)
     parser.add_argument("--discriminator_fc_dim", type=int, default=512)
     parser.add_argument("--generator_z_tanh", action="store_true", default=True, dest="generator_z_tanh")
     parser.add_argument("--no_generator_z_tanh", action="store_false", dest="generator_z_tanh")
     parser.add_argument("--generator_random_concat", action="store_true", default=False)
-    parser.add_argument("--pure_image_training", action="store_true", default=False)
-    parser.add_argument("--add_image_mse", action="store_true", default=False)
+    parser.add_argument("--add_image_loss", action="store_true", default=False)
+    parser.add_argument("--use_perceptive_loss", action="store_true", default=False)
     #parser.add_argument("--flip_aug", action="store_true", default=False)
     parser.add_argument("--loss", type=str, default="mixed")
     parser.add_argument("--savedir", type=str, default="/mnt/g/FacesNIR/models/identifier")
