@@ -35,6 +35,7 @@ from eg3d.viz import zoom_widget
 from eg3d.viz import conditioning_pose_widget
 from eg3d.viz import render_type_widget
 from eg3d.viz import render_depth_sample_widget
+from eg3d.viz import gaze_widget
 
 #----------------------------------------------------------------------------
 
@@ -57,18 +58,19 @@ class Visualizer(imgui_window.ImguiWindow):
         self.button_w           = 0
 
         # Widgets.
-        self.pickle_widget      = pickle_widget.PickleWidget(self)
-        self.latent_widget      = latent_widget.LatentWidget(self)
-        self.stylemix_widget    = stylemix_widget.StyleMixingWidget(self)
-        self.trunc_noise_widget = trunc_noise_widget.TruncationNoiseWidget(self)
-        self.perf_widget        = performance_widget.PerformanceWidget(self)
-        self.capture_widget     = capture_widget.CaptureWidget(self)
-        self.backbone_cache_widget     = backbone_cache_widget.BackboneCacheWidget(self)
-        self.layer_widget       = layer_widget.LayerWidget(self)
-        self.pose_widget        = pose_widget.PoseWidget(self)
-        self.zoom_widget        = zoom_widget.ZoomWidget(self)
-        self.conditioning_pose_widget        = conditioning_pose_widget.ConditioningPoseWidget(self)
-        self.render_type_widget = render_type_widget.RenderTypeWidget(self)
+        self.pickle_widget              = pickle_widget.PickleWidget(self)
+        self.latent_widget              = latent_widget.LatentWidget(self)
+        self.stylemix_widget            = stylemix_widget.StyleMixingWidget(self)
+        self.trunc_noise_widget         = trunc_noise_widget.TruncationNoiseWidget(self)
+        self.perf_widget                = performance_widget.PerformanceWidget(self)
+        self.capture_widget             = capture_widget.CaptureWidget(self)
+        self.backbone_cache_widget      = backbone_cache_widget.BackboneCacheWidget(self)
+        self.layer_widget               = layer_widget.LayerWidget(self)
+        self.pose_widget                = pose_widget.PoseWidget(self)
+        self.zoom_widget                = zoom_widget.ZoomWidget(self)
+        self.conditioning_pose_widget   = conditioning_pose_widget.ConditioningPoseWidget(self)
+        self.gaze_widget                = gaze_widget.GazeWidget(self)
+        self.render_type_widget         = render_type_widget.RenderTypeWidget(self)
         self.render_depth_sample_widget = render_depth_sample_widget.RenderDepthSampleWidget(self)
 
         if capture_dir is not None:
@@ -128,6 +130,7 @@ class Visualizer(imgui_window.ImguiWindow):
         dragging, dx, dy = imgui_utils.drag_hidden_window('##result_area', x=self.pane_w, y=0, width=self.content_width-self.pane_w, height=self.content_height)
         if dragging:
             self.pose_widget.drag(dx, dy)
+            self.gaze_widget.drag(dx, dy)
 
         # Begin control pane.
         imgui.set_next_window_position(0, 0)
@@ -140,6 +143,7 @@ class Visualizer(imgui_window.ImguiWindow):
         self.pose_widget(expanded)
         self.zoom_widget(expanded)
         self.conditioning_pose_widget(expanded)
+        self.gaze_widget(expanded)
         self.render_type_widget(expanded)
         self.render_depth_sample_widget(expanded)
         self.latent_widget(expanded)
