@@ -31,7 +31,7 @@ class IdentifierConfig(Config):
     conditioning_map_dim: int = 16
     discriminator_fc_dim: int = 512
     discriminator_out_dim: int = 1
-    generator_z_tanh: bool = True
+    generator_z_tanh: bool = False
     generator_random_concat: bool = False
     mode: str = "gan"
     add_image_loss: bool = False
@@ -59,7 +59,18 @@ class IdentifierGenerator(GaussianDiscriminator):
         
         if cfg.generator_random_concat:
             self.z_out = FullyConnectedLayer(cfg.latent_z_dim * 2, cfg.latent_z_dim, activation="linear")
-    
+            
+        #if cfg.mode == "latent":
+        #    self.z_out_mapping = torch.nn.Sequential(
+        #        torch.nn.Linear(cfg.latent_z_dim, cfg.latent_z_dim),
+        #        torch.nn.LeakyReLU(),
+        #        torch.nn.Linear(cfg.latent_z_dim, cfg.latent_z_dim),
+        #        torch.nn.LeakyReLU(),
+        #        torch.nn.Linear(cfg.latent_z_dim, cfg.latent_z_dim),
+        #        torch.nn.LeakyReLU(),
+        #        torch.nn.Linear(cfg.latent_z_dim, cfg.latent_z_dim),
+        #    )
+        
     
     def forward(self, img: torch.Tensor, img_hash: torch.Tensor = None, update_emas=False, alpha_new_layers: float = 1, **block_kwargs):
         _ = update_emas  # unused
@@ -89,13 +100,18 @@ class IdentifierGenerator(GaussianDiscriminator):
         
         z = x[:, :self.cfg.latent_z_dim]
         if self.cfg.generator_z_tanh:
-            z = torch.nn.functional.tanh(z) * 2.0
+            z = torch.nn.functional.tanh(z) * 2.5
         if self.cfg.generator_random_concat:
             z_concat_noise = torch.concat([z, img_hash], dim=1)
             z = self.z_out(z_concat_noise)
-            if self.cfg.generator_z_tanh:
-                z = torch.nn.functional.tanh(z) * 2.0
-                
+            if self.cfg.generator_z_tanh:# and self.cfg.mode != "latent":
+                z = torch.nn.functional.tanh(z) * 2.5
+        #if self.cfg.mode == "latent":
+        #    z = torch.nn.functional.tanh(z) * 2.5
+        #    z = self.z_out_mapping(z)
+        #    if self.cfg.generator_z_tanh:
+        #        z = torch.nn.functional.tanh(z) * 2.5
+            
         c = x[:, self.cfg.latent_z_dim:]
         
         # fix last row of cam_2_world matrix
@@ -251,10 +267,12 @@ def load_identifier_model(cfg: IdentifierConfig, device: str, weights_file=None)
     suffix = (cfg.subject_hash if cfg.subject_hash is not None else "classes") if cfg.mode == "gan" else cfg.mode+"loss"
     if cfg.generator_random_concat:
         suffix += "_noise"
-    if not cfg.generator_z_tanh:
-        suffix += "_notanh"
+    if cfg.generator_z_tanh:
+        suffix += "_ztanh"
     if cfg.add_image_loss:
         suffix += "_addimagemse"
+    if cfg.use_perceptive_loss:
+        suffix += "_perceptiveloss"
     
     name = "identifier_" + (pathlib.Path(cfg.synth_model).name+"_" if cfg.synth_model is not None else "") + str(int(time.time())) + "_" + suffix
     
@@ -302,28 +320,29 @@ def perceptive_loss(input: torch.Tensor, target: torch.Tensor, min_size=16, weig
     assert(input.device == target.device)
     assert(input.shape == target.shape)
     
-    max_log = int(math.floor(math.log2(x)))
-    min_log = int(math.floor(math.log2(min_size)))
+    min_log = int(math.ceil(math.log2(min_size)))
+    max_log = int(math.floor(math.log2(input.shape[2])))
     resolutions = [2**l for l in range(min_log, max_log+1)]
-    if 2**start_log != input.shape[1]:
-        resolutions = [input.shape[1]] + resolutions
+    if 2**max_log != input.shape[2]:
+        resolutions.append(input.shape[2])
     
     if weights is None:
         weights = torch.full((len(resolutions),), 1.0, dtype=torch.float32, device=input.device)
     elif isinstance(weights, list):
-        weights = torch.tensor(list[:len(resolutions)], dtype=torch.float32, device=input.device)
+        weights = torch.tensor(weights[:len(resolutions)], dtype=torch.float32, device=input.device)
     else:
         weights = weights[:len(resolutions)]
     weights /= torch.linalg.vector_norm(weights)
+    assert(weights.shape[0] == len(resolutions))
     
-    loss = 0.0
+    loss = torch.tensor([0.0], dtype=torch.float32, device=input.device)
     
     for idx, res in enumerate(resolutions):
         x, y = input, target
-        if res != input.shape[1]:
+        if res != input.shape[2]:
             x = torchvision.transforms.functional.resize(input, [res, res]) # bilinear and anti-alias is active per default
             y = torchvision.transforms.functional.resize(target, [res, res])
         
-        loss += torch.nn.functional.mse_loss(x, y) * weights[idx]
+        loss = loss + torch.nn.functional.mse_loss(x, y) * weights[idx]
         
     return loss

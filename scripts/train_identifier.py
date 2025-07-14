@@ -81,7 +81,7 @@ def main(args):
     train_time_start = timer()
     
     if args.mode == "image":
-        data = {"train_loss_G": [], "train_image_mse": [], "train_c_mse": [], "test_loss_G": [], "test_image_mse": [], "test_c_mse": [], "trainsets": []}
+        data = {"train_loss_G": [], "train_image_mse": [], "train_c_mse": [], "test_loss_G": [], "test_image_mse": [], "test_c_mse": [], "trainsets": [], "train_image_perceptive_loss": []}
     elif args.mode == "latent":
         data = {"train_loss_G": [], "train_z_mse": [], "train_c_mse": [], "test_loss_G": [], "test_z_mse": [], "test_c_mse": [], "trainsets": []}
     else:
@@ -102,7 +102,7 @@ def main(args):
             #with tqdm(total=(len(trainset) // args.batch_size) + int(math.ceil(len(testset) / args.batch_size)), leave=False) as pbar:
             with tqdm(total=len(trainset) // args.batch_size, leave=False) as pbar:
                 if args.mode == "image":
-                    train_loss_G, train_image_mse, train_c_mse = train_step_pure_image_loss(dl_train, model, nirhead_model, optimizerG, device, args, pbar)
+                    train_loss_G, train_image_mse, train_c_mse, train_image_perceptive_loss = train_step_pure_image_loss(dl_train, model, nirhead_model, optimizerG, device, args, pbar)
                 elif args.mode == "latent":
                     train_loss_G, train_z_mse, train_c_mse = train_step_latents(dl_train, model, optimizerG, device, args, pbar)
                 else:
@@ -111,11 +111,11 @@ def main(args):
             
             if args.mode == "image":
                 print(
-                    f"Epoch {epoch:04} | Train: (loss_G={train_loss_G:.6f}, image_mse={train_image_mse:.6f}, c_mse={train_c_mse:.6f}" +
+                    f"Epoch {epoch:04} | Train: (loss_G={train_loss_G:.6f}, image_mse={train_image_mse:.6f}, c_mse={train_c_mse:.6f}"+(f", image_perceptive_loss={train_image_perceptive_loss:.6f}" if model.cfg.use_perceptive_loss else "")+")" +
                     f" | CUDA alloc: {torch.cuda.memory_allocated(0) / (2 ** 30):.3f}GB, rsrvd: {torch.cuda.memory_reserved(0) / (2 ** 30):.3}GB")
             elif args.mode == "latent":
                 print(
-                    f"Epoch {epoch:04} | Train: (loss_G={train_loss_G:.6f}, z_mse={train_z_mse:.6f}, c_mse={train_c_mse:.6f}" +
+                    f"Epoch {epoch:04} | Train: (loss_G={train_loss_G:.6f}, z_mse={train_z_mse:.6f}, c_mse={train_c_mse:.6f})" +
                     f" | CUDA alloc: {torch.cuda.memory_allocated(0) / (2 ** 30):.3f}GB, rsrvd: {torch.cuda.memory_reserved(0) / (2 ** 30):.3}GB")
             else:
                 print(
@@ -127,6 +127,8 @@ def main(args):
                 data["train_loss_G"].append(float(train_loss_G))
                 data["train_image_mse"].append(float(train_image_mse))
                 data["train_c_mse"].append(float(train_c_mse))
+                if model.cfg.use_perceptive_loss:
+                    data["train_image_perceptive_loss"].append(float(train_image_perceptive_loss))
             elif args.mode == "latent":
                 data["train_loss_G"].append(float(train_loss_G))
                 data["train_z_mse"].append(float(train_z_mse))
@@ -260,7 +262,7 @@ def train_step(data_loader, subject_labels_index, model, nirhead_model, optimize
                 image_loss = identifier.perceptive_loss(fake_imgs, real_imgs, weights=[1.0, 1.0, 1.0, 1.0, 2.0])
             else:
                 image_loss = image_mse
-            loss_G += image_loss
+            loss_G += torch.squeeze(image_loss)
         
         loss_G.backward()
         
@@ -290,7 +292,7 @@ def train_step(data_loader, subject_labels_index, model, nirhead_model, optimize
 
 
 def train_step_pure_image_loss(data_loader, model, nirhead_model, optimizerG, device, args, pbar):
-    train_loss_G, train_image_mse, train_c_mse = 0.0, 0.0, 0.0
+    train_loss_G, train_image_mse, train_c_mse, train_image_perceptive_loss = 0.0, 0.0, 0.0, 0.0
     for batch, (real_imgs, subj_labels, real_c) in enumerate(data_loader):
         real_imgs_hash = identifier.images_hash(real_imgs, device) if model.cfg.generator_random_concat else None
         real_imgs = real_imgs.to(device)
@@ -322,14 +324,17 @@ def train_step_pure_image_loss(data_loader, model, nirhead_model, optimizerG, de
         
         train_loss_G += loss_G.item()
         train_image_mse += image_mse.item()
+        if model.cfg.use_perceptive_loss:
+            train_image_perceptive_loss += image_loss.item()
         train_c_mse += c_mse.item()
         
         pbar.update(1)
     
     train_loss_G /= len(data_loader)
     train_image_mse /= len(data_loader)
+    train_image_perceptive_loss /= len(data_loader)
     train_c_mse /= len(data_loader)
-    return train_loss_G, train_image_mse, train_c_mse
+    return train_loss_G, train_image_mse, train_c_mse, train_image_perceptive_loss
 
 
 def train_step_latents(data_loader, model, optimizerG, device, args, pbar):
@@ -446,7 +451,7 @@ if __name__ == "__main__":
     parser.add_argument("--subject_hash", type=str, default="binary", choices=["binary", "sha256", "none"])
     parser.add_argument("--full_classification", action="store_true", default=False)
     parser.add_argument("--discriminator_fc_dim", type=int, default=512)
-    parser.add_argument("--generator_z_tanh", action="store_true", default=True, dest="generator_z_tanh")
+    parser.add_argument("--generator_z_tanh", action="store_true", default=False, dest="generator_z_tanh")
     parser.add_argument("--no_generator_z_tanh", action="store_false", dest="generator_z_tanh")
     parser.add_argument("--generator_random_concat", action="store_true", default=False)
     parser.add_argument("--add_image_loss", action="store_true", default=False)
@@ -470,5 +475,7 @@ if __name__ == "__main__":
     
     gc.collect()
     torch.cuda.empty_cache()
+    
+    #torch.autograd.set_detect_anomaly(True)
     
     main(args)

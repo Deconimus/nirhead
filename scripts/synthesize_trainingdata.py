@@ -274,6 +274,8 @@ def label_images(images, image_names, static_attributes, classifier, z, c, args)
     labels = { k: {} for k in image_names }
     if classifier is not None and static_attributes is not None:
         x = torchvision.transforms.functional.rgb_to_grayscale(images.to(device))
+        if x.shape[2] != classifier.img_res or x.shape[3] != classifier.img_res:
+            x = torchvision.transforms.functional.resize(x, [classifier.img_res, classifier.img_res])
         y_pred = classifier(x).to("cpu")
         y_pred_filtered = stat.take_from_attribute_tensor(y_pred, classifier.static_attributes, static_attributes)
         labels = stat.labels_from_attribute_tensor(y_pred_filtered, image_names, static_attributes)
