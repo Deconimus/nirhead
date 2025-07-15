@@ -35,7 +35,7 @@ from eg3d.viz import zoom_widget
 from eg3d.viz import conditioning_pose_widget
 from eg3d.viz import render_type_widget
 from eg3d.viz import render_depth_sample_widget
-from eg3d.viz import gaze_widget
+from nirhead.eg3d.viz import gaze_widget
 
 #----------------------------------------------------------------------------
 

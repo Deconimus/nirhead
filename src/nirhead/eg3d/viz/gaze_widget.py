@@ -8,6 +8,7 @@
 # without an express license agreement from NVIDIA CORPORATION or
 # its affiliates is strictly prohibited.
 
+import math
 import numpy as np
 import imgui
 import eg3d.dnnlib as dnnlib
@@ -23,8 +24,9 @@ class GazeWidget:
 
     def drag(self, dx, dy):
         viz = self.viz
-        self.gaze.yaw   += -dx / viz.font_size * 3e-2
-        self.gaze.pitch += -dy / viz.font_size * 3e-2
+        self.gaze.yaw   += -dx / viz.font_size * 6e-2
+        self.gaze.pitch -= -dy / viz.font_size * 6e-2
+        self.limit_values()
 
     @imgui_utils.scoped_by_object_id
     def __call__(self, show=True):
@@ -32,6 +34,7 @@ class GazeWidget:
         if show:
             imgui.text('Gaze')
             imgui.same_line(viz.label_w)
+            self.limit_values()
             yaw = self.gaze.yaw
             pitch = self.gaze.pitch
             with imgui_utils.item_width(viz.font_size * 5):
@@ -39,6 +42,7 @@ class GazeWidget:
                 if changed:
                     self.gaze.yaw = new_yaw
                     self.gaze.pitch = new_pitch
+                    self.limit_values()
             imgui.same_line(viz.label_w + viz.font_size * 13 + viz.spacing * 2)
             _clicked, dragging, dx, dy = imgui_utils.drag_button('Drag', width=viz.button_w)
             if dragging:
@@ -53,5 +57,9 @@ class GazeWidget:
 
         viz.args.gaze_yaw   = self.gaze.yaw
         viz.args.gaze_pitch = self.gaze.pitch
+        
+    def limit_values(self):
+        self.gaze.yaw = min(max(self.gaze.yaw, -math.pi * 0.5), math.pi * 0.5)
+        self.gaze.pitch = min(max(self.gaze.pitch, -math.pi * 0.5), math.pi * 0.5)
 
 #----------------------------------------------------------------------------

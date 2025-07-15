@@ -274,6 +274,8 @@ class Renderer:
                      lookat_point=(0, 0, 0.2),
                      conditioning_yaw=0,
                      conditioning_pitch=0,
+                     gaze_yaw=0,
+                     gaze_pitch=0,
                      focal_length=4.2647,
                      render_type='image',
                      
@@ -332,8 +334,14 @@ class Renderer:
         
         all_attr = None
         if G.attr_dim > 0:
-            # TODO: use stat.random_attribute_tensor(...), need static_attribute list
-            all_attr = (torch.rand([all_cs.shape[0], G.attr_dim], dtype=torch.float32) + 0.5).int().float()
+            # all_attr = (torch.rand([all_cs.shape[0], G.attr_dim], dtype=torch.float32) + 0.5).int().float()
+            static_attributes = G._config.static_attributes
+            attr_indices = stat.attribute_indices(static_attributes)
+            all_attr = stat.random_attribute_tensor(static_attributes, all_cs.shape[0])
+            if "gaze" in static_attributes:
+                attr_idx = attr_indices["gaze"]
+                all_attr[:,attr_idx+0] = gaze_pitch
+                all_attr[:,attr_idx+1] = gaze_yaw
             all_attr = self.to_device(all_attr)
         
         # Run mapping network.
