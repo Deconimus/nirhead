@@ -274,8 +274,14 @@ class Renderer:
                      lookat_point=(0, 0, 0.2),
                      conditioning_yaw=0,
                      conditioning_pitch=0,
+                     
                      gaze_yaw=0,
                      gaze_pitch=0,
+                     bright_pupil=False,
+                     glasses=False,
+                     facial_hair=False,
+                     eye_open=0.5,
+                     
                      focal_length=4.2647,
                      render_type='image',
                      
@@ -342,6 +348,18 @@ class Renderer:
                 attr_idx = attr_indices["gaze"]
                 all_attr[:,attr_idx+0] = gaze_pitch
                 all_attr[:,attr_idx+1] = gaze_yaw
+            if "bright_pupil" in static_attributes:
+                attr_idx = attr_indices["bright_pupil"]
+                all_attr[:,attr_idx] = bright_pupil
+            if "glasses" in static_attributes:
+                attr_idx = attr_indices["glasses"]
+                all_attr[:, attr_idx] = glasses
+            if "facial_hair" in static_attributes:
+                attr_idx = attr_indices["facial_hair"]
+                all_attr[:, attr_idx] = facial_hair
+            if "eye_open" in static_attributes:
+                attr_idx = attr_indices["eye_open"]
+                all_attr[:, attr_idx] = eye_open
             all_attr = self.to_device(all_attr)
         
         # Run mapping network.

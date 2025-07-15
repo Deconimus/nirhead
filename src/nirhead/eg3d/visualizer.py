@@ -36,6 +36,8 @@ from eg3d.viz import conditioning_pose_widget
 from eg3d.viz import render_type_widget
 from eg3d.viz import render_depth_sample_widget
 from nirhead.eg3d.viz import gaze_widget
+from nirhead.eg3d.viz import eye_open_widget
+from nirhead.eg3d.viz import binary_attributes_widget
 
 #----------------------------------------------------------------------------
 
@@ -69,9 +71,11 @@ class Visualizer(imgui_window.ImguiWindow):
         self.pose_widget                = pose_widget.PoseWidget(self)
         self.zoom_widget                = zoom_widget.ZoomWidget(self)
         self.conditioning_pose_widget   = conditioning_pose_widget.ConditioningPoseWidget(self)
-        self.gaze_widget                = gaze_widget.GazeWidget(self)
         self.render_type_widget         = render_type_widget.RenderTypeWidget(self)
         self.render_depth_sample_widget = render_depth_sample_widget.RenderDepthSampleWidget(self)
+        self.binary_attributes_widget   = binary_attributes_widget.BinaryAttributesWidget(self)
+        self.eye_open_widget            = eye_open_widget.EyeOpenWidget(self)
+        self.gaze_widget                = gaze_widget.GazeWidget(self)
 
         if capture_dir is not None:
             self.capture_widget.path = capture_dir
@@ -142,11 +146,13 @@ class Visualizer(imgui_window.ImguiWindow):
         self.pickle_widget(expanded)
         self.pose_widget(expanded)
         self.zoom_widget(expanded)
-        self.conditioning_pose_widget(expanded)
-        self.gaze_widget(expanded)
         self.render_type_widget(expanded)
         self.render_depth_sample_widget(expanded)
         self.latent_widget(expanded)
+        self.conditioning_pose_widget(expanded)
+        self.binary_attributes_widget(expanded)
+        self.eye_open_widget(expanded)
+        self.gaze_widget(expanded)
         self.stylemix_widget(expanded)
         self.trunc_noise_widget(expanded)
         expanded, _visible = imgui_utils.collapsing_header('Performance & capture', default=True)
