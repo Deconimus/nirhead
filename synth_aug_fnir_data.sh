@@ -2,11 +2,12 @@
 export BW_IMPLEMENTATION=1
 
 # Facial Hair
+# Already done X
 #python scripts/synthesize_trainingdata.py -m gh110_fnir_balanced_trainsubjects_cl05_fh_ada_attrskip_resume --batch 8 --res 256 --poses /mnt/g/FacesNIR/scripts/fnir_d3fr_dataset.json --classifier models/classifier/vit16_fh_fnir_old --labels facial_hair --dst /mnt/g/FacesNIR/synthetic_augmented_classifiers/trainsets/facial_hair/mixed_real_synthetic_samesize -n 1250
 #python scripts/synthesize_trainingdata.py -m gh110_fnir_balanced_trainsubjects_cl05_fh_ada_attrskip_resume --batch 8 --res 256 --poses /mnt/g/FacesNIR/scripts/fnir_d3fr_dataset.json --classifier models/classifier/vit16_fh_fnir_old --labels facial_hair --dst /mnt/g/FacesNIR/synthetic_augmented_classifiers/trainsets/facial_hair/full_real_synthetic_extended -n 2500
 #python scripts/synthesize_trainingdata.py -m gh110_fnir_balanced_trainsubjects_cl05_fh_ada_attrskip_resume --batch 8 --res 256 --poses /mnt/g/FacesNIR/scripts/fnir_d3fr_dataset.json --classifier models/classifier/vit16_fh_fnir_old --labels facial_hair --dst /mnt/g/FacesNIR/synthetic_augmented_classifiers/trainsets/facial_hair/full_real_synthetic_extended_large -n 25000
-python scripts/synthesize_trainingdata.py -m gh110_fnir_balanced_trainsubjects_cl05_fh_ada_attrskip_resume --batch 8 --res 256 --poses /mnt/g/FacesNIR/scripts/fnir_d3fr_dataset.json --classifier models/classifier/vit16_fh_fnir_old --labels facial_hair --dst /mnt/g/FacesNIR/synthetic_augmented_classifiers/trainsets/facial_hair/synthetic_fh0 -n 1250 --filter_fh 0
-python scripts/synthesize_trainingdata.py -m gh110_fnir_balanced_trainsubjects_cl05_fh_ada_attrskip_resume --batch 8 --res 256 --poses /mnt/g/FacesNIR/scripts/fnir_d3fr_dataset.json --classifier models/classifier/vit16_fh_fnir_old --labels facial_hair --dst /mnt/g/FacesNIR/synthetic_augmented_classifiers/trainsets/facial_hair/synthetic_fh1 -n 1250 --filter_fh 1
+#python scripts/synthesize_trainingdata.py -m gh110_fnir_balanced_trainsubjects_cl05_fh_ada_attrskip_resume --batch 8 --res 256 --poses /mnt/g/FacesNIR/scripts/fnir_d3fr_dataset.json --classifier models/classifier/vit16_fh_fnir_old --labels facial_hair --dst /mnt/g/FacesNIR/synthetic_augmented_classifiers/trainsets/facial_hair/synthetic_fh0 -n 1250 --filter_fh 0
+#python scripts/synthesize_trainingdata.py -m gh110_fnir_balanced_trainsubjects_cl05_fh_ada_attrskip_resume --batch 8 --res 256 --poses /mnt/g/FacesNIR/scripts/fnir_d3fr_dataset.json --classifier models/classifier/vit16_fh_fnir_old --labels facial_hair --dst /mnt/g/FacesNIR/synthetic_augmented_classifiers/trainsets/facial_hair/synthetic_fh1 -n 1250 --filter_fh 1
 
 # Glasses
 # TODO: change to a model using balanced_trainsubjects set
