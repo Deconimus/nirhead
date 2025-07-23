@@ -184,17 +184,18 @@ def main(args):
         if not (low == 0.0 and high == 1.0):
             attr_batches[:, attr_idx] = attr_batches[:, attr_idx] * (high - low) + low # transform uniform random values from [0,1] to [low,high]
     
-    if "bright_pupil" in attr_indices.keys():
-        attr_idx = attr_indices["bright_pupil"]
-        if args.filter_bp is not None:
-            attr_batches[:,attr_idx] = bool(args.filter_bp)
-        elif args.augment_distribution is None: # 50/50 distribution, if not augmenting given data
-            for i in range(attr_batches.shape[0] // 2):
-                z_batches[i*2+1, :] = z_batches[i*2, :]
-                c_batches[i*2+1, :] = c_batches[i*2, :]
-                attr_batches[i*2+1, :] = attr_batches[i*2, :]
-                attr_batches[i*2,   attr_idx] = False
-                attr_batches[i*2+1, attr_idx] = True
+    for label_name, label_filter_arg in [("bright_pupil", args.filter_bp), ("facial_hair", args.filter_fh), ("glasses", args.filter_gl)]:
+        if label_name in attr_indices.keys():
+            attr_idx = attr_indices[label_name]
+            if label_filter_arg is not None:
+                attr_batches[:,attr_idx] = bool(label_filter_arg)
+            elif args.augment_distribution is None: # 50/50 distribution, if not augmenting given data
+                for i in range(attr_batches.shape[0] // 2):
+                    z_batches[i*2+1, :] = z_batches[i*2, :]
+                    c_batches[i*2+1, :] = c_batches[i*2, :]
+                    attr_batches[i*2+1, :] = attr_batches[i*2, :]
+                    attr_batches[i*2,   attr_idx] = False
+                    attr_batches[i*2+1, attr_idx] = True
     
     z_batches    = z_batches.split(args.batch)
     c_batches    = c_batches.split(args.batch)
@@ -344,6 +345,8 @@ if __name__ == "__main__":
     parser.add_argument("--augment_distribution", action="store_true", default=False)
     
     parser.add_argument("--filter_bp", type=int, default=None)
+    parser.add_argument("--filter_fh", type=int, default=None)
+    parser.add_argument("--filter_gl", type=int, default=None)
     parser.add_argument("--filter_eo_min", type=float, default=None)
     parser.add_argument("--filter_eo_max", type=float, default=None)
     parser.add_argument("--filter_gz_pitch_min", type=float, default=None)

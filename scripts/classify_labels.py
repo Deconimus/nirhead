@@ -26,8 +26,7 @@ def main(args):
     filenamefilter = lambda f: str(f.absolute())[len(str(src_dir.absolute())) + 1:]
     
     dl_workers = multiprocessing.cpu_count() if not args.src.lower().endswith(".zip") else 1
-    dataset = PathImageFolder(args.src, transform=lambda img: ClassificationDataSet._image_transform(
-        np.asarray(img, dtype=np.uint8), resolution=args.img_res, mode="gray"))
+    dataset = PathImageFolder(args.src, transform=lambda img: ClassificationDataSet._image_transform(np.asarray(img, dtype=np.uint8), resolution=args.img_res, mode="gray"))
     dataloader = DataLoader(dataset, batch_size=args.batch, shuffle=False, num_workers=dl_workers, drop_last=False)
     
     json_dst = {"labels": {}}

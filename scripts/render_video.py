@@ -148,6 +148,11 @@ def attribute_value_step(attr, t, speed):
             val = [dir_x, dir_y, dir_z]
         else:
             val = [y, x]
+    elif attr == "facial_hair_cont":
+        val = t % 8.0
+        val = val * 0.25
+        if val > 1.0:
+            val = 1.0 - val
     
     tensor = torch.tensor(val, dtype=torch.float32, requires_grad=False, device=device)
     return tensor
