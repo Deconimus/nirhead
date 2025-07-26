@@ -41,6 +41,7 @@ class ClassificationDataSet:
             with self._open_file("labels.json") as f:
                 labeldata = json.load(f)
             self.labels = []
+            wrong_label_error = False
             for file in self.images:
                 file = file.replace("\\", "/")
                 #if not file in labeldata.keys():
@@ -61,8 +62,15 @@ class ClassificationDataSet:
                     else:
                         raise ValueError(f"Empty label-data in labels.json at key [{file}][{cl}]")
                     
+                if len(l) < stat.attributes_dim(self.labelclasses):
+                    print(f"Missing or wrong labels for {file}")
+                    wrong_label_error = True
+                    continue
+                    
                 assert(len(l) == stat.attributes_dim(self.labelclasses))
                 self.labels.append(np.array(l, dtype=np.float32))
+                
+            assert(not wrong_label_error)
 
         assert(self.inference or self.labelclasses is None or len(self.images) == len(self.labels))
         

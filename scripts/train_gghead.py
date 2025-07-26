@@ -127,6 +127,8 @@ def main(
         use_l1_scale_reg: bool = False,
         lambda_raw_scale_std: float = 0,
         lambda_classifier: float = 0,
+        
+        gghead_pure: bool = False,
 
         # Resuming
         overwrite_lambda_classifier: Optional[float] = None,
@@ -289,7 +291,10 @@ def main(
                 optimizer_config.loss_config.effective_res_disc_start_kimg = resume_checkpoint
                 optimizer_config.loss_config.pretrained_resolution = pretrained_resolution
             dataset_config.resolution = overwrite_resolution
-
+        
+        if gghead_pure is not None:
+            model_config.generator_config.force_grayscale = not gghead_pure
+        
         if overwrite_plane_resolution is not None:
             pretrained_plane_resolution = model_config.generator_config.plane_resolution
             model_config.generator_config.pretrained_plane_resolution = pretrained_plane_resolution
@@ -503,7 +508,7 @@ def main(
             generator_config.return_background = return_background
             generator_config.background_color = background_color
             generator_config.static_attributes = static_attributes
-
+        
         discriminator_config = GaussianDiscriminatorConfig(
             channel_base=opts.cbase,
             channel_max=opts.cmax,
@@ -528,6 +533,9 @@ def main(
             discriminator_config.c_dim = 0
         discriminator_config.img_resolution = resolution
         discriminator_config.img_channels = img_channels
+        
+        if gghead_pure is not None:
+            generator_config.force_grayscale = not gghead_pure
         
         model_config = GGHeadGANConfig(
             generator_config=generator_config,
