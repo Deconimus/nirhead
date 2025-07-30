@@ -30,8 +30,8 @@ def main(args):
     assert (os.path.exists(args.dataset))
     
     trainset = IdentificationDataSet(args.dataset, subdir="train", resolution=args.img_res, mode="gray", flip=False, strict_pose=True, latents=args.mode=="latent")#, labelclasses=label_classes)
-    testset = IdentificationDataSet(args.dataset, subdir="test", resolution=args.img_res, mode="gray", inference=True, flip=False)#, labelclasses=label_classes)
-    dl_train = DataLoader(trainset, batch_size=args.batch_size, shuffle=True, num_workers=dl_workers, drop_last=True)
+    dl_train = DataLoader(trainset, batch_size=args.batch_size, shuffle=True, num_workers=dl_workers, drop_last=False)
+    testset = IdentificationDataSet(args.dataset, subdir="test" if not args.no_test else "train", resolution=args.img_res, mode="gray", inference=True, flip=False)  # , labelclasses=label_classes)
     dl_test = DataLoader(testset, batch_size=args.batch_size, shuffle=False, num_workers=dl_workers, drop_last=False)
     
     print(f"Trainset size: {len(trainset)} ({len(trainset) // args.batch_size} batches of {args.batch_size})")
@@ -447,7 +447,7 @@ if __name__ == "__main__":
     parser.add_argument("-b", "--batch_size", type=int, default=4)
     parser.add_argument("-e", "--epochs", type=int, default=100)
     parser.add_argument("--img_res", type=int, default=256)
-    parser.add_argument("--mode", type=str, default="gan", choices=["gan", "image", "latent"])
+    parser.add_argument("--mode", type=str, default="image", choices=["gan", "image", "latent"])
     parser.add_argument("--subject_hash", type=str, default="binary", choices=["binary", "sha256", "none"])
     parser.add_argument("--full_classification", action="store_true", default=False)
     parser.add_argument("--discriminator_fc_dim", type=int, default=512)
@@ -460,6 +460,7 @@ if __name__ == "__main__":
     parser.add_argument("--loss", type=str, default="mixed")
     parser.add_argument("--savedir", type=str, default="/mnt/g/FacesNIR/models/identifier")
     parser.add_argument("--dst", type=str, default=None)
+    parser.add_argument("--no_test", action="store_true", default=False)
     
     # parser.add_argument("--no_train", type=str)
     parser.add_argument("--resume", type=str)

@@ -615,7 +615,6 @@ class GGHeadModel(nn.Module):
             planes = self.backbone.synthesis(ws, update_emas=update_emas, **synthesis_kwargs)
 
             if self._config.force_grayscale:
-                print("Forcing grayscale in color synthesis.")
                 #print(self._config.gaussian_attribute_config.sh_degree)
                 c_start = self._uv_attribute_start_channel[GaussianAttribute.COLOR]
                 c_channels = self._config.gaussian_attribute_config.n_color_channels

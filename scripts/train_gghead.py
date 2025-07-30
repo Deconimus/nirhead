@@ -294,6 +294,8 @@ def main(
         
         if gghead_pure is not None:
             model_config.generator_config.force_grayscale = not gghead_pure
+        else:
+            print("Forcing grayscale in color synthesis.")
         
         if overwrite_plane_resolution is not None:
             pretrained_plane_resolution = model_config.generator_config.plane_resolution
@@ -536,6 +538,8 @@ def main(
         
         if gghead_pure is not None:
             generator_config.force_grayscale = not gghead_pure
+        else:
+            print("Forcing grayscale in color synthesis.")
         
         model_config = GGHeadGANConfig(
             generator_config=generator_config,
