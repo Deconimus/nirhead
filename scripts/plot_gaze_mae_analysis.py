@@ -42,10 +42,10 @@ def main(args, pgf):
     
     w = (3 * max(1, len(multiplot_files)) + 0.5) if args.width is None else args.width
     h = 3 if args.height is None else args.height
-    fig = plt.figure(figsize=[w, h], dpi=100)
-    fig.tight_layout()
     
     if args.multiplot is not None:
+        fig = plt.figure(figsize=[w, h], dpi=100)
+        fig.tight_layout()
         _, axarr = plt.subplots(1, len(multiplot_files), width_ratios=[1 for _ in range(len(multiplot_files))], height_ratios=[1], figsize=[w,h])
     
     minval = -math.pi * 0.5 if args.min_val is None else args.min_val
@@ -55,6 +55,9 @@ def main(args, pgf):
         if args.multiplot is None:
             dst_file = dst_dir / (src_file.name.replace(".json", "").replace("gaze_analysis_", "") + "_"+args.mode + (".pgf" if pgf else ".png"))
         
+        if args.multiplot is None:
+            fig = plt.figure(figsize=[w, h], dpi=100)
+            fig.tight_layout()
         ax = plt.gca() if args.multiplot is None else axarr[file_idx]
         
         title = src_file.name[len("gaze_analysis_vit16_gz_"):].replace(".json", "")
@@ -67,7 +70,7 @@ def main(args, pgf):
         heatmap = calc_heatmap(sample_data, args.axis_bins)
         
         if args.mode == "heatmap":
-            ax.imshow(heatmap, cmap=args.colormap, vmin=min_error, vmax=max_error, interpolation="nearest", aspect=("auto" if args.multiplot is not None else None))
+            ax.imshow(heatmap, cmap=args.colormap, vmin=min_error, vmax=max_error, interpolation="nearest", aspect="auto")
             
             ticks = [-1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5]
             bin_ticks = np.array([radians_to_bin(x) for x in ticks])
