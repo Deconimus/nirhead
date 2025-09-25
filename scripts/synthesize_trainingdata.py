@@ -13,7 +13,7 @@ from gaussian_splatting.gaussian_renderer import render
 from gaussian_splatting.scene.cameras import pose_to_rendercam
 from eg3d.training.training_loop import setup_snapshot_image_grid, save_image_grid
 
-from gghead.model_manager.finder import find_model_manager
+from gghead.model_manager.finder import find_model_manager, full_run_name
 from gghead.constants import DEFAULT_INTRINSICS
 from gghead.dataset.image_folder_dataset import GGHeadImageFolderDataset, GGHeadImageFolderDatasetConfig
 
@@ -47,11 +47,16 @@ def main(args):
     if args.checkpoint is not None:
         chkpt = args.checkpoint
     
+    args.model = full_run_name(args.model)
     model_manager = find_model_manager(args.model)
     model_short = args.model[:args.model.index("_")] if args.model.startswith("gh") else args.model
     
-    dst_dir = pathlib.Path(args.dst) / model_short
-    dst_img_dir = dst_dir / "train"
+    if not args.nosubdir:
+        dst_dir = pathlib.Path(args.dst) / model_short
+        dst_img_dir = dst_dir / "train"
+    else:
+        dst_dir = pathlib.Path(args.dst)
+        dst_img_dir = dst_dir
     os.makedirs(dst_img_dir, exist_ok=True)
     
     checkpoint = model_manager._resolve_checkpoint_id(chkpt)
@@ -341,6 +346,7 @@ if __name__ == "__main__":
     parser.add_argument("--labels", type=str, nargs="+", default=None)  # gradient over given attributes
     parser.add_argument("--classifier", type=str, default=None) # to specify labelling classifier for output images
     parser.add_argument("--store_latent", action="store_true", default=False)
+    parser.add_argument("--nosubdir", action="store_true", default=False)
     
     parser.add_argument("--augment_distribution", action="store_true", default=False)
     
